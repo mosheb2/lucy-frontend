@@ -37,8 +37,16 @@ class ApiClient {
     const url = `${this.baseURL}${endpoint}`;
     const config = {
       headers: this.getHeaders(),
+      credentials: 'include', // Include cookies in requests
+      mode: 'cors', // Explicitly set CORS mode
       ...options,
     };
+
+    console.log(`API Request to ${endpoint}`, { 
+      url,
+      method: options.method || 'GET',
+      hasToken: !!this.token
+    });
 
     try {
       const response = await fetch(url, config);
@@ -52,12 +60,17 @@ class ApiClient {
           try {
             const refreshToken = localStorage.getItem('refresh_token');
             if (refreshToken) {
+              console.log('Found refresh token, attempting to refresh...');
               const refreshResponse = await this.refreshToken(refreshToken);
               if (refreshResponse && refreshResponse.session?.access_token) {
                 // Successfully refreshed, retry the original request
                 console.log('Token refreshed successfully, retrying original request');
                 return this.request(endpoint, options);
+              } else {
+                console.log('Refresh response did not contain a valid token');
               }
+            } else {
+              console.log('No refresh token available');
             }
           } catch (refreshError) {
             console.error('Failed to refresh token:', refreshError);
@@ -75,8 +88,14 @@ class ApiClient {
       }
       
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Network error' }));
-        throw new Error(error.error || `HTTP ${response.status}`);
+        console.error(`API error: ${response.status} ${response.statusText}`);
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          errorData = { error: 'Network error' };
+        }
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
       
       return await response.json();
@@ -99,27 +118,38 @@ class ApiClient {
 
   async signIn(credentials) {
     console.log('Attempting signin with credentials:', { email: credentials.email });
-    const response = await this.request('/auth/signin', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
-    });
-    
-    console.log('Signin response:', response);
-    
-    if (response.session?.access_token) {
-      console.log('Found access token in response, setting token');
-      this.setToken(response.session.access_token);
+    try {
+      const response = await this.request('/auth/signin', {
+        method: 'POST',
+        body: JSON.stringify(credentials),
+      });
       
-      // Also store refresh token if available
-      if (response.session?.refresh_token) {
-        localStorage.setItem('refresh_token', response.session.refresh_token);
-        console.log('Refresh token saved to localStorage');
+      console.log('Signin response received:', { 
+        hasUser: !!response.user,
+        hasSession: !!response.session,
+        hasAccessToken: !!response.session?.access_token
+      });
+      
+      if (response.session?.access_token) {
+        console.log('Found access token in response, setting token');
+        this.setToken(response.session.access_token);
+        
+        // Also store refresh token if available
+        if (response.session?.refresh_token) {
+          localStorage.setItem('refresh_token', response.session.refresh_token);
+          console.log('Refresh token saved to localStorage');
+        } else {
+          console.warn('No refresh token in response');
+        }
+      } else {
+        console.warn('No access token found in response');
       }
-    } else {
-      console.log('No access token found in response');
+      
+      return response;
+    } catch (error) {
+      console.error('Sign-in error:', error);
+      throw error;
     }
-    
-    return response;
   }
 
   async signOut() {

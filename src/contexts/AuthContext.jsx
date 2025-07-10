@@ -169,9 +169,6 @@ export const AuthProvider = ({ children }) => {
     try {
       console.log(`Initiating OAuth sign-in with provider: ${provider}`);
       
-      // For OAuth, we'll need to implement this through the backend
-      const backendUrl = import.meta.env.VITE_API_URL || 'https://api.lucysounds.com/api';
-      
       // Store the current URL as the intended return URL
       const returnUrl = window.location.href;
       localStorage.setItem('auth_return_url', returnUrl);
@@ -180,12 +177,29 @@ export const AuthProvider = ({ children }) => {
       if (provider === 'solana') {
         console.log('Initiating Solana wallet authentication');
         // Redirect to Solana wallet auth endpoint
-        window.location.href = `${backendUrl}/auth/wallet/solana`;
+        window.location.href = `${import.meta.env.VITE_API_URL || 'https://api.lucysounds.com/api'}/auth/wallet/solana`;
         return;
       }
       
-      // Standard OAuth providers
-      window.location.href = `${backendUrl}/auth/${provider}`;
+      // Use Supabase directly for OAuth providers
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback/${provider}`
+        }
+      });
+      
+      if (error) {
+        console.error(`OAuth error with provider ${provider}:`, error);
+        throw error;
+      }
+      
+      if (data && data.url) {
+        // Redirect to the OAuth provider's authorization page
+        window.location.href = data.url;
+      } else {
+        throw new Error('No OAuth URL returned from Supabase');
+      }
     } catch (error) {
       console.error(`OAuth sign-in error with provider ${provider}:`, error);
       throw error;

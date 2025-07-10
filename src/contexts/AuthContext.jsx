@@ -1,0 +1,196 @@
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import apiClient from '@/api/client';
+import { supabase } from '@/api/supabase-auth';
+
+const AuthContext = createContext();
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Function to fetch and merge user profile data
+  const fetchUserWithProfile = async (authUser) => {
+    if (!authUser) return null;
+    
+    try {
+      // The backend already returns user with profile data merged
+      return {
+        ...authUser,
+        // Map profile fields to expected field names
+        profile_image_url: authUser.avatar_url || authUser.profile_image_url,
+        artist_name: authUser.artist_name || authUser.full_name,
+        full_name: authUser.full_name,
+        bio: authUser.bio,
+        genre: authUser.genre,
+        website: authUser.website,
+        location: authUser.location,
+        verified: authUser.is_verified,
+        role: authUser.role
+      };
+    } catch (error) {
+      console.error('Error in fetchUserWithProfile:', error);
+      return authUser; // Return auth user without profile if anything fails
+    }
+  };
+
+  useEffect(() => {
+    // Get initial session
+    const getInitialSession = async () => {
+      try {
+        // Check if we have a token in localStorage
+        const token = localStorage.getItem('auth_token');
+        const refreshToken = localStorage.getItem('refresh_token');
+        
+        if (token) {
+          apiClient.setToken(token);
+          
+          try {
+            // Try to get current user from backend
+            const userData = await apiClient.getCurrentUser();
+            const userWithProfile = await fetchUserWithProfile(userData.user);
+            setUser(userWithProfile);
+            
+            // Update localStorage
+            localStorage.setItem('user_authenticated', 'true');
+            localStorage.setItem('user_id', userData.user.id);
+          } catch (error) {
+            console.error('Error getting current user:', error);
+            
+            // Try to refresh the token if we have a refresh token
+            if (refreshToken) {
+              try {
+                console.log('Attempting to refresh token on startup');
+                const refreshResponse = await apiClient.refreshToken(refreshToken);
+                
+                if (refreshResponse && refreshResponse.session?.access_token) {
+                  // Successfully refreshed, try to get user again
+                  const userData = await apiClient.getCurrentUser();
+                  const userWithProfile = await fetchUserWithProfile(userData.user);
+                  setUser(userWithProfile);
+                  
+                  // Update localStorage
+                  localStorage.setItem('user_authenticated', 'true');
+                  localStorage.setItem('user_id', userData.user.id);
+                } else {
+                  // Refresh failed, clear auth data
+                  clearAuthData();
+                }
+              } catch (refreshError) {
+                console.error('Failed to refresh token on startup:', refreshError);
+                clearAuthData();
+              }
+            } else {
+              // No refresh token, clear auth data
+              clearAuthData();
+            }
+          }
+        } else {
+          clearAuthData();
+        }
+      } catch (error) {
+        console.error('Error getting initial session:', error);
+        clearAuthData();
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    // Helper function to clear authentication data
+    const clearAuthData = () => {
+      apiClient.setToken(null);
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user_authenticated');
+      localStorage.removeItem('user_id');
+      setUser(null);
+    };
+
+    getInitialSession();
+  }, []);
+
+  const signIn = async (credentials) => {
+    try {
+      const response = await apiClient.signIn(credentials);
+      if (response.user) {
+        const userWithProfile = await fetchUserWithProfile(response.user);
+        setUser(userWithProfile);
+        
+        // Update localStorage
+        localStorage.setItem('user_authenticated', 'true');
+        localStorage.setItem('user_id', response.user.id);
+      }
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const signUp = async (userData) => {
+    try {
+      const response = await apiClient.signUp(userData);
+      // Note: signup doesn't automatically sign in, user needs to confirm email
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      await apiClient.signOut();
+      await supabase.auth.signOut();
+      clearAuthData();
+    } catch (error) {
+      // Even if signout fails, clear local state
+      clearAuthData();
+      throw error;
+    }
+  };
+  
+  // Helper function to clear authentication data
+  const clearAuthData = () => {
+    apiClient.setToken(null);
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_authenticated');
+    localStorage.removeItem('user_id');
+    setUser(null);
+  };
+
+  const signInWithOAuth = async (provider) => {
+    try {
+      // For OAuth, we'll need to implement this through the backend
+      // For now, redirect to backend OAuth endpoint
+      const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+      window.location.href = `${backendUrl}/auth/${provider}`;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const value = {
+    user,
+    loading,
+    signIn,
+    signUp,
+    signOut,
+    signInWithOAuth,
+    isAuthenticated: !!user,
+    updateUser: setUser, // Add function to update user data
+    apiClient, // Expose API client for other components to use
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}; 

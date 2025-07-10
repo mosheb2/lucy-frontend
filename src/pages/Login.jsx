@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Mail, Lock, Eye, EyeOff, Github, Chrome } from 'lucide-react';
+import { Loader2, Mail, Lock, Eye, EyeOff, Facebook, Chrome, Wallet } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginPage() {
@@ -18,14 +18,24 @@ export default function LoginPage() {
   });
   
   const navigate = useNavigate();
+  const location = useLocation();
   const { signIn, signInWithOAuth, isAuthenticated } = useAuth();
 
   useEffect(() => {
     // Check if user is already authenticated
     if (isAuthenticated) {
-      navigate('/Dashboard');
+      // Redirect to Dashboard or to the intended page if available
+      const from = location.state?.from?.pathname || '/Dashboard';
+      navigate(from, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+    
+    // Check for error in URL query params
+    const queryParams = new URLSearchParams(location.search);
+    const errorMessage = queryParams.get('error');
+    if (errorMessage) {
+      setError(decodeURIComponent(errorMessage));
+    }
+  }, [isAuthenticated, navigate, location]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -39,7 +49,9 @@ export default function LoginPage() {
       });
 
       if (user && session) {
-        navigate('/Dashboard');
+        // Redirect to Dashboard or to the intended page if available
+        const from = location.state?.from?.pathname || '/Dashboard';
+        navigate(from, { replace: true });
       } else {
         setError('Login failed - no user data received');
       }
@@ -171,16 +183,16 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <Button
                   type="button"
                   variant="outline"
                   className="w-full"
-                  onClick={() => handleOAuthSignIn('github')}
+                  onClick={() => handleOAuthSignIn('facebook')}
                   disabled={isLoading}
                 >
-                  <Github className="w-4 h-4 mr-2" />
-                  GitHub
+                  <Facebook className="w-4 h-4 mr-2" />
+                  Facebook
                 </Button>
                 <Button
                   type="button"
@@ -191,6 +203,16 @@ export default function LoginPage() {
                 >
                   <Chrome className="w-4 h-4 mr-2" />
                   Google
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => handleOAuthSignIn('solana')}
+                  disabled={isLoading}
+                >
+                  <Wallet className="w-4 h-4 mr-2" />
+                  Solana
                 </Button>
               </div>
             </form>

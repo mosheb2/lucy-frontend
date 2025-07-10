@@ -167,11 +167,27 @@ export const AuthProvider = ({ children }) => {
 
   const signInWithOAuth = async (provider) => {
     try {
+      console.log(`Initiating OAuth sign-in with provider: ${provider}`);
+      
       // For OAuth, we'll need to implement this through the backend
-      // For now, redirect to backend OAuth endpoint
       const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+      
+      // Store the current URL as the intended return URL
+      const returnUrl = window.location.href;
+      localStorage.setItem('auth_return_url', returnUrl);
+      
+      // Special handling for Solana wallet
+      if (provider === 'solana') {
+        console.log('Initiating Solana wallet authentication');
+        // Redirect to Solana wallet auth endpoint
+        window.location.href = `${backendUrl}/auth/wallet/solana`;
+        return;
+      }
+      
+      // Standard OAuth providers
       window.location.href = `${backendUrl}/auth/${provider}`;
     } catch (error) {
+      console.error(`OAuth sign-in error with provider ${provider}:`, error);
       throw error;
     }
   };

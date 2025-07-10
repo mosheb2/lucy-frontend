@@ -9,6 +9,7 @@ const AuthCallback = () => {
   const location = useLocation();
   const { updateUser } = useAuth();
   const [status, setStatus] = useState('Processing authentication...');
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -20,78 +21,100 @@ const AuthCallback = () => {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('OAuth callback error:', error);
-          setStatus('Authentication failed: ' + error.message);
-          navigate('/login?error=' + encodeURIComponent(error.message));
+          console.error('Error getting session:', error);
+          setError(`Authentication error: ${error.message}`);
           return;
         }
         
-        if (session) {
-          console.log('Session found, setting token...');
-          setStatus('Session found, setting up your account...');
-          
-          // Store the access token for backend API calls
-          localStorage.setItem('auth_token', session.access_token);
-          apiClient.setToken(session.access_token);
-          
-          // Store the refresh token if available
-          if (session.refresh_token) {
-            localStorage.setItem('refresh_token', session.refresh_token);
-            console.log('Refresh token saved to localStorage');
-          }
-          
-          try {
-            // Get user data from backend using apiClient
-            setStatus('Getting your profile data...');
-            const userData = await apiClient.getCurrentUser();
-            console.log('User data received:', userData);
-            
-            // Update user in context
-            updateUser(userData.user);
-            
-            // Update localStorage
-            localStorage.setItem('user_authenticated', 'true');
-            localStorage.setItem('user_id', userData.user.id);
-            
-            console.log('Authentication successful, redirecting to dashboard...');
-            setStatus('Authentication successful! Redirecting...');
-            
-            // Redirect to dashboard
-            setTimeout(() => {
-              navigate('/Dashboard', { replace: true });
-            }, 500);
-          } catch (apiError) {
-            console.error('Error getting user data:', apiError);
-            setStatus('Error getting user data: ' + (apiError.message || 'Unknown error'));
-            navigate('/login?error=' + encodeURIComponent('Failed to get user data. Please try again.'));
-          }
-        } else {
-          console.log('No session found');
-          setStatus('No session found');
-          navigate('/login?error=' + encodeURIComponent('No session found'));
+        if (!session) {
+          console.error('No session found');
+          setError('No session found. Please try logging in again.');
+          return;
         }
-      } catch (error) {
-        console.error('Error handling OAuth callback:', error);
-        setStatus('Authentication failed: ' + (error.message || 'Unknown error'));
-        navigate('/login?error=' + encodeURIComponent('Authentication failed'));
+        
+        console.log('Session obtained, setting token...');
+        setStatus('Session obtained, getting user profile...');
+        
+        // Set the token for API calls
+        const token = session.access_token;
+        apiClient.setToken(token);
+        
+        // Store tokens in localStorage
+        localStorage.setItem('auth_token', token);
+        localStorage.setItem('refresh_token', session.refresh_token);
+        
+        try {
+          // Get user profile from backend
+          const userData = await apiClient.getCurrentUser();
+          
+          if (!userData || !userData.user) {
+            console.error('User data not found');
+            setError('User profile not found. Please try logging in again.');
+            return;
+          }
+          
+          console.log('User profile obtained, updating context...');
+          setStatus('Authentication successful! Redirecting...');
+          
+          // Update user in context
+          updateUser(userData.user);
+          
+          // Store user data in localStorage
+          localStorage.setItem('user_authenticated', 'true');
+          localStorage.setItem('user_id', userData.user.id);
+          
+          // Get the return URL from localStorage or default to dashboard
+          const returnUrl = localStorage.getItem('auth_return_url');
+          localStorage.removeItem('auth_return_url'); // Clear it after use
+          
+          // Add a slight delay to ensure context is updated before redirecting
+          setTimeout(() => {
+            if (returnUrl && !returnUrl.includes('/login') && !returnUrl.includes('/signup') && !returnUrl.includes('/auth/callback')) {
+              // Parse the return URL to get just the path
+              try {
+                const url = new URL(returnUrl);
+                navigate(url.pathname + url.search, { replace: true });
+              } catch (e) {
+                navigate('/Dashboard', { replace: true });
+              }
+            } else {
+              navigate('/Dashboard', { replace: true });
+            }
+          }, 500);
+        } catch (profileError) {
+          console.error('Error getting user profile:', profileError);
+          setError(`Error getting user profile: ${profileError.message}`);
+        }
+      } catch (e) {
+        console.error('Unexpected error in auth callback:', e);
+        setError(`Unexpected error: ${e.message}`);
       }
     };
 
     handleCallback();
-  }, [navigate, updateUser, location]);
+  }, [navigate, location, updateUser]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-white to-indigo-50">
-      <div className="max-w-md w-full space-y-8 p-6 bg-white rounded-xl shadow-lg">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-gray-900">Authenticating...</h2>
-          <p className="mt-2 text-sm text-gray-600">
-            {status}
-          </p>
-        </div>
-        <div className="flex justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-        </div>
+      <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full text-center">
+        {error ? (
+          <>
+            <div className="text-red-500 mb-4 text-xl font-semibold">Authentication Failed</div>
+            <p className="text-gray-600 mb-6">{error}</p>
+            <button
+              onClick={() => navigate('/login')}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              Return to Login
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Authentication in Progress</h2>
+            <p className="text-gray-600">{status}</p>
+          </>
+        )}
       </div>
     </div>
   );

@@ -57,6 +57,7 @@ import AuthCallback from "./AuthCallback";
 import { BrowserRouter as Router, Route, Routes, useLocation, Navigate } from 'react-router-dom';
 import Login from './Login';
 import Signup from './Signup';
+import ConnectWallet from './ConnectWallet';
 import { useAuth } from '@/contexts/AuthContext';
 
 const PAGES = {
@@ -231,6 +232,7 @@ export default function Pages() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/connect-wallet" element={<ConnectWallet />} />
                 <Route path="*" element={
                   <RequireAuth>
                     <PagesContent />

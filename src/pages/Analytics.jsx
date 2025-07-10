@@ -1,32 +1,40 @@
 
 import React, { useState, useEffect } from 'react';
-import { User } from '@/api/entities';
 import { useAuth } from '@/contexts/AuthContext';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { 
+  CheckCircle, Plus, ArrowRight, Music, Youtube, Instagram, Twitter, 
+  Facebook, RefreshCw, Loader2, Zap, Brain, Lightbulb, Target,
+  ArrowUp, ArrowDown, ExternalLink, AlertCircle, Shield,
+  MessageSquare, Users, TrendingUp, BarChart3
+} from 'lucide-react';
 import StudioPanel from '../components/StudioPanel';
 import ActionButton from '../components/ActionButton';
-import { getCreatorAnalytics } from '@/api/functions';
-import { spotifyForArtists } from '@/api/functions';
-import { getYouTubeChannel } from '@/api/functions';
-import { getInstagramProfile } from '@/api/functions';
-import { getTikTokProfile } from '@/api/functions';
-import { twitterAnalytics } from '@/api/functions';
-import { getFacebookProfile } from '@/api/functions';
-import { getThreadsProfile } from '@/api/functions';
+import { 
+    getCreatorAnalytics, 
+    spotifyForArtists, 
+    getYouTubeProfile, 
+    getInstagramProfile, 
+    getTikTokProfile, 
+    getTwitterProfile, 
+    getFacebookProfile, 
+    getThreadsProfile,
+    getPlatformAnalytics
+} from '@/api/functions';
 import AnimatedIcon from '../components/AnimatedIcon';
 import LordIcon from '../components/LordIcon';
 import { cn } from '@/lib/utils';
-import { ArrowUp, ArrowDown, ExternalLink, AlertCircle, Plus, CheckCircle, Shield } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PieChart, Pie, Cell, Sector, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Area, AreaChart } from 'recharts';
 import { InvokeLLM } from "@/api/integrations";
-import {
-    Music, Youtube, Instagram, Twitter, Facebook,
-    MessageSquare, Users, TrendingUp, BarChart3,
-    Zap, Brain, Lightbulb, Target
-} from 'lucide-react';
+import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import AnalyticsStatCard from '@/components/AnalyticsStatCard';
+import AudienceCharts from '@/components/analytics/AudienceCharts';
+import { formatDistanceToNow } from 'date-fns';
+import { formatNumber } from '@/lib/utils';
 
 const TikTokIcon = ({ size = 24, className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -92,213 +100,74 @@ const platformMeta = {
     }
 };
 
-const AnalyticsStatCard = ({ platform, data, isLoading, onRefresh }) => {
+// Replace the duplicate AnalyticsStatCard component with a different name
+const PlatformStatCard = ({ platform, data, isLoading, onRefresh }) => {
     const meta = platformMeta[platform];
     if (!meta) return null;
 
-    // Handle different data structures for different platforms
-    const getFollowerCount = () => {
-        if (platform === 'youtube') {
-            return data?.followers || data?.subscriberCount || 0;
-        }
-        return data?.followers || 0;
-    };
-
-    const formattedValue = getFollowerCount() ? getFollowerCount().toLocaleString() : 'N/A';
-    const growth = data?.growth || 0;
-    const isPositive = growth >= 0;
-    const IconComponent = meta.icon; // Get the icon component
+    const { name, icon: IconComponent, color } = meta;
+    const followers = data.followers || 0;
+    const growth = data.growth || 0;
+    const isPositiveGrowth = growth >= 0;
 
     return (
-        <StudioPanel className="p-6 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
-            <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                    <div className={cn(
-                        "w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-r",
-                        meta.gradient
-                    )}>
-                        <IconComponent size={24} className="text-white" /> {/* Render icon component */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className={`w-full h-2 ${color}`} />
+            <div className="p-5">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-lg bg-gradient-to-r ${color} flex items-center justify-center`}>
+                            <IconComponent size={20} className="text-white" />
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-slate-900">{name}</h3>
+                            <p className="text-xs text-slate-500">
+                                {data.last_updated ? `Updated ${formatDistanceToNow(new Date(data.last_updated), { addSuffix: true })}` : 'Not updated yet'}
+                            </p>
+                        </div>
                     </div>
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => onRefresh(platform)}
+                        disabled={isLoading}
+                        className="text-slate-400 hover:text-slate-600"
+                    >
+                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    </Button>
+                </div>
+
+                <div className="mt-4 flex items-end justify-between">
                     <div>
-                        <h3 className="font-semibold text-slate-900 capitalize text-lg">{platform}</h3>
-                        <p className="text-sm text-slate-500">{meta.label}</p>
+                        <p className="text-xs font-medium text-slate-500 uppercase">Followers</p>
+                        <p className="text-2xl font-bold text-slate-900">{formatNumber(followers)}</p>
                     </div>
-                </div>
-
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onRefresh(platform)}
-                    disabled={isLoading}
-                    className="opacity-60 hover:opacity-100"
-                >
-                    <AnimatedIcon
-                        icon={isLoading ? "loading" : "activity"}
-                        size={16}
-                        trigger={isLoading ? "spin" : "hover"}
-                    />
-                </Button>
-            </div>
-
-            {isLoading ? (
-                <div className="space-y-3">
-                    <div className="h-8 w-24 bg-slate-200 animate-pulse rounded-md" />
-                    <div className="h-4 w-16 bg-slate-100 animate-pulse rounded-md" />
-                </div>
-            ) : (
-                <>
-                    <p className="text-3xl font-bold text-slate-900 mb-2">{formattedValue}</p>
-                    <div className="flex items-center justify-between">
-                        <div className={cn(
-                            "flex items-center gap-1 text-sm font-medium",
-                            isPositive ? "text-green-600" : "text-red-600"
-                        )}>
-                            {isPositive ? (
-                                <ArrowUp className="w-4 h-4" />
-                            ) : (
-                                <ArrowDown className="w-4 h-4" />
-                            )}
-                            <span>{Math.abs(growth)}%</span>
-                        </div>
-                        {data?.external_url && (
-                            <a
-                                href={data.external_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-slate-400 hover:text-slate-600 transition-colors"
-                            >
-                                <ExternalLink className="w-4 h-4" />
-                            </a>
+                    <div className={`flex items-center px-2 py-1 rounded-md ${
+                        isPositiveGrowth ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                    }`}>
+                        {isPositiveGrowth ? (
+                            <ArrowUp className="h-3 w-3 mr-1" />
+                        ) : (
+                            <ArrowDown className="h-3 w-3 mr-1" />
                         )}
+                        <span className="text-xs font-medium">{Math.abs(growth)}%</span>
                     </div>
-                </>
-            )}
+                </div>
 
-            {/* YouTube-specific additional data */}
-            {platform === 'youtube' && data?.totalViews && (
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                    <div className="flex justify-between text-sm">
-                        <span className="text-slate-600">Total Views</span>
-                        <span className="font-medium">{data.totalViews.toLocaleString()}</span>
+                {data.external_url && (
+                    <div className="mt-4 pt-4 border-t border-slate-100">
+                        <a
+                            href={data.external_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs flex items-center text-blue-600 hover:text-blue-800"
+                        >
+                            View on {name} <ExternalLink className="h-3 w-3 ml-1" />
+                        </a>
                     </div>
-                </div>
-            )}
-
-            {/* Spotify-specific additional data */}
-            {platform === 'spotify' && data?.top_tracks && data.top_tracks.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                    <p className="text-sm text-slate-600 mb-2">Top Track</p>
-                    <p className="font-medium text-sm">{data.top_tracks[0].name}</p>
-                </div>
-            )}
-             {/* Instagram-specific additional data */}
-            {platform === 'instagram' && data?.postsCount && (
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                    <div className="flex justify-between text-sm">
-                        <span className="text-slate-600">Posts</span>
-                        <span className="font-medium">{data.postsCount.toLocaleString()}</span>
-                    </div>
-                    {data.isVerified && (
-                        <div className="flex items-center gap-1 mt-2">
-                            <LordIcon icon="check" size={14} className="text-blue-500" />
-                            <span className="text-xs text-blue-600 font-medium">Verified</span>
-                        </div>
-                    )}
-                </div>
-            )}
-            {/* TikTok-specific additional data */}
-            {platform === 'tiktok' && data?.videoCount && (
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                    <div className="flex justify-between text-sm">
-                        <span className="text-slate-600">Videos</span>
-                        <span className="font-medium">{data.videoCount.toLocaleString()}</span>
-                    </div>
-                    {data.heartCount && (
-                        <div className="flex justify-between text-sm mt-1">
-                            <span className="text-slate-600">Likes</span>
-                            <span className="font-medium">{data.heartCount.toLocaleString()}</span>
-                        </div>
-                    )}
-                    {data.isVerified && (
-                        <div className="flex items-center gap-1 mt-2">
-                            <LordIcon icon="check" size={14} className="text-blue-500" />
-                            <span className="text-xs text-blue-600 font-medium">Verified Account</span>
-                        </div>
-                    )}
-                </div>
-            )}
-            {/* Twitter-specific additional data (if available and desired) */}
-            {platform === 'twitter' && (data?.postsCount || data?.favoritesCount || data?.listedCount) && (
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                    {data.postsCount && (
-                        <div className="flex justify-between text-sm">
-                            <span className="text-slate-600">Posts</span>
-                            <span className="font-medium">{data.postsCount.toLocaleString()}</span>
-                        </div>
-                    )}
-                    {data.favoritesCount && (
-                        <div className="flex justify-between text-sm mt-1">
-                            <span className="text-slate-600">Likes (Favorites)</span>
-                            <span className="font-medium">{data.favoritesCount.toLocaleString()}</span>
-                        </div>
-                    )}
-                    {data.listedCount && (
-                        <div className="flex justify-between text-sm mt-1">
-                            <span className="text-slate-600">Listed</span>
-                            <span className="font-medium">{data.listedCount.toLocaleString()}</span>
-                        </div>
-                    )}
-                    {data.isVerified && (
-                        <div className="flex items-center gap-1 mt-2">
-                            <LordIcon icon="check" size={14} className="text-blue-500" />
-                            <span className="text-xs text-blue-600 font-medium">Verified Account</span>
-                        </div>
-                    )}
-                </div>
-            )}
-            {/* Facebook-specific additional data (if available and desired) */}
-            {platform === 'facebook' && (data?.likes || data?.category || data?.website) && (
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                    {data.likes !== undefined && (
-                        <div className="flex justify-between text-sm">
-                            <span className="text-slate-600">Page Likes</span>
-                            <span className="font-medium">{data.likes.toLocaleString()}</span>
-                        </div>
-                    )}
-                    {data.category && (
-                        <div className="flex justify-between text-sm mt-1">
-                            <span className="text-slate-600">Category</span>
-                            <span className="font-medium">{data.category}</span>
-                        </div>
-                    )}
-                    {data.website && (
-                        <div className="flex justify-between text-sm mt-1">
-                            <span className="text-slate-600">Website</span>
-                            <a href={data.website} target="_blank" rel="noopener noreferrer" className="font-medium text-purple-600 hover:underline flex items-center gap-1">
-                                Visit <ExternalLink className="w-3 h-3" />
-                            </a>
-                        </div>
-                    )}
-                </div>
-            )}
-             {/* Threads-specific additional data */}
-            {platform === 'threads' && data?.isVerified !== undefined && (
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                    {data.isVerified && (
-                        <div className="flex items-center gap-1 mt-2">
-                            <LordIcon icon="check" size={14} className="text-blue-500" />
-                            <span className="text-xs text-blue-600 font-medium">Verified Account</span>
-                        </div>
-                    )}
-                    {data.bio && (
-                        <div className="mt-2 text-sm">
-                            <span className="text-slate-600">Bio:</span>
-                            <p className="text-slate-800 font-medium line-clamp-2">{data.bio}</p>
-                        </div>
-                    )}
-                </div>
-            )}
-        </StudioPanel>
+                )}
+            </div>
+        </div>
     );
 };
 
@@ -1035,7 +904,7 @@ export default function AnalyticsPage() {
                 for (const platformId in knownUrlFields) {
                     const url = knownUrlFields[platformId];
                     if (url) {
-                        platformsToFetchPromises.push(handleFetchAnalytics(url));
+                        platformsToFetchPromises.push(handlePlatformAnalyticsFetch(url));
                     }
                 }
 
@@ -1056,11 +925,10 @@ export default function AnalyticsPage() {
         initialize();
     }, [user, updateUser]);
 
-    const handleFetchAnalytics = async (platformUrl) => {
+    const handlePlatformAnalyticsFetch = async (platformUrl) => {
         const platform = detectPlatform(platformUrl);
         if (!platform || platform === 'unknown') {
-            console.error(`Could not detect platform for URL: ${platformUrl}`);
-            setError(`Could not detect platform for the provided URL: ${platformUrl}`);
+            setError('Unsupported platform URL');
             return;
         }
 
@@ -1068,229 +936,62 @@ export default function AnalyticsPage() {
         setError(null);
 
         try {
-            console.log(`Fetching analytics for ${platform} with URL: ${platformUrl}`);
-
             let result;
-            if (platform === 'youtube') {
-                // Use the dedicated YouTube channel function for better data
-                result = await getYouTubeChannel({ identifier: platformUrl });
 
-                if (result.data && !result.error) {
-                    // Transform YouTube data to match our analytics format
-                    const transformedData = {
-                        platform: 'youtube',
-                        supported: true,
-                        followers: result.data.subscriberCount || 0,
-                        profileName: result.data.name,
-                        totalViews: parseViewCount(result.data.viewCountText),
-                        totalVideos: parseViewCount(result.data.videoCountText),
-                        avatar: result.data.avatar?.image?.sources?.[2]?.url,
-                        description: result.data.description || '',
-                        channelUrl: result.data.channel,
-                        joinedDate: result.data.joinedDateText,
-                        growth: Math.floor(Math.random() * 25) + 1 // Demo growth
-                    };
-                    result = { data: transformedData };
-                } else {
-                    throw new Error(result.error || 'Failed to fetch YouTube data');
-                }
-            } else if (platform === 'instagram') {
-                // Use the dedicated Instagram profile function
-                result = await getInstagramProfile({ url: platformUrl });
-
-                if (result.data && result.data.success && result.data.data?.user) {
-                    const user = result.data.data.user;
-                    // Transform Instagram data to match our analytics format
-                    const transformedData = {
-                        platform: 'instagram',
-                        supported: true,
-                        followers: user.edge_followed_by?.count || 0,
-                        following: user.edge_follow?.count || 0,
-                        profileName: user.full_name || user.username,
-                        username: user.username,
-                        avatar: user.profile_pic_url_hd || user.profile_pic_url,
-                        bio: user.biography || '',
-                        isVerified: user.is_verified || false,
-                        isPrivate: user.is_private || false,
-                        postsCount: user.edge_owner_to_timeline_media?.count || 0,
-                        externalUrl: user.external_url,
-                        growth: Math.floor(Math.random() * 25) + 1 // Demo growth
-                    };
-                    result = { data: transformedData };
-                } else {
-                    throw new Error(result.error || 'Failed to fetch Instagram data');
-                }
-            } else if (platform === 'tiktok') {
-                // Use the dedicated TikTok profile function
-                result = await getTikTokProfile({ url: platformUrl });
-
-                if (result.data && result.data.user && result.data.stats) {
-                    // Transform TikTok data to match our analytics format
-                    const transformedData = {
-                        platform: 'tiktok',
-                        supported: true,
-                        followers: result.data.stats.followerCount || 0,
-                        following: result.data.stats.followingCount || 0,
-                        profileName: result.data.user.nickname || result.data.user.uniqueId,
-                        username: result.data.user.uniqueId,
-                        avatar: result.data.user.avatarLarger || result.data.user.avatarMedium,
-                        bio: result.data.user.signature || '',
-                        isVerified: result.data.user.verified || false,
-                        isPrivate: result.data.user.privateAccount || false,
-                        videoCount: result.data.stats.videoCount || 0,
-                        heartCount: result.data.stats.heartCount || 0,
-                        bioLink: result.data.user.bioLink?.link,
-                        growth: Math.floor(Math.random() * 25) + 1 // Demo growth
-                    };
-                    result = { data: transformedData };
-                } else {
-                    throw new Error(result.error || 'Failed to fetch TikTok data');
-                }
-            } else if (platform === 'twitter') {
-                // Use the dedicated Twitter function
-                result = await twitterAnalytics({ url: platformUrl });
-
-                if (result.data && result.data.legacy) {
-                    const profile = result.data.legacy;
-                    // Transform Twitter data to match our analytics format
-                    const transformedData = {
-                        platform: 'twitter',
-                        supported: true,
-                        followers: profile.followers_count || 0,
-                        following: profile.friends_count || 0,
-                        profileName: profile.name,
-                        username: profile.screen_name,
-                        avatar: profile.profile_image_url_https?.replace('_normal', '_400x400'),
-                        bio: profile.description || '',
-                        location: profile.location,
-                        isVerified: result.data.is_blue_verified || false,
-                        postsCount: profile.statuses_count || 0,
-                        favoritesCount: profile.favourites_count || 0,
-                        listedCount: profile.listed_count || 0,
-                        growth: Math.floor(Math.random() * 25) + 1 // Demo growth
-                    };
-                    result = { data: transformedData };
-                } else {
-                    throw new Error(result.error || 'Failed to fetch Twitter data');
-                }
-            } else if (platform === 'facebook') {
-                // Use the dedicated Facebook profile function
-                result = await getFacebookProfile({ url: platformUrl });
-
-                if (result.data && result.data.name) {
-                    // Transform Facebook data to match our analytics format
-                    const transformedData = {
-                        platform: 'facebook',
-                        supported: true,
-                        followers: result.data.followerCount || 0,
-                        likes: result.data.likeCount || 0,
-                        profileName: result.data.name,
-                        avatar: result.data.profilePhoto?.viewer_image?.height ?
-                               result.data.profilePhoto.url : null,
-                        bio: result.data.pageIntro || '',
-                        category: result.data.category || '',
-                        address: result.data.address || '',
-                        phone: result.data.phone || '',
-                        website: result.data.website || '',
-                        email: result.data.email || '',
-                        rating: result.data.rating || '',
-                        ratingCount: result.data.ratingCount || 0,
-                        priceRange: result.data.priceRange || '',
-                        services: result.data.services || '',
-                        creationDate: result.data.creationDate || '',
-                        isBusinessActive: result.data.isBusinessPageActive || false,
-                        growth: Math.floor(Math.random() * 25) + 1 // Demo growth
-                    };
-                    result = { data: transformedData };
-                } else {
-                    throw new Error(result.error || 'Failed to fetch Facebook data');
-                }
-            } else if (platform === 'threads') {
-                // Use the dedicated Threads profile function
-                result = await getThreadsProfile({ url: platformUrl });
-
-                if (result.data && result.data.success) {
-                    const profile = result.data;
-                    // Transform Threads data to match our analytics format
-                    const transformedData = {
-                        platform: 'threads',
-                        supported: true,
-                        followers: profile.follower_count || 0,
-                        profileName: profile.full_name || profile.username,
-                        username: profile.username,
-                        avatar: profile.hd_profile_pic_versions?.[0]?.url || profile.profile_pic_url,
-                        bio: profile.biography,
-                        isVerified: profile.is_verified,
-                        external_url: profile.bio_links?.[0]?.url || `https://threads.net/@${profile.username}`,
-                        growth: Math.floor(Math.random() * 25) + 1 // Demo growth
-                    };
-                    result = { data: transformedData };
-                } else {
-                    throw new Error(result.error || 'Failed to fetch Threads data');
-                }
+            if (platform === 'spotify') {
+                // Spotify uses its own authentication flow
+                result = await spotifyForArtists({ action: 'analytics' });
             } else {
-                // Use the existing analytics function for other platforms
-                result = await getCreatorAnalytics({ platform_url: platformUrl });
+                // Use the appropriate platform-specific function based on the detected platform
+                switch (platform) {
+                    case 'youtube':
+                        result = await getYouTubeProfile({ url: platformUrl });
+                        break;
+                    case 'instagram':
+                        result = await getInstagramProfile({ url: platformUrl });
+                        break;
+                    case 'tiktok':
+                        result = await getTikTokProfile({ url: platformUrl });
+                        break;
+                    case 'twitter':
+                        result = await getTwitterProfile({ url: platformUrl });
+                        break;
+                    case 'facebook':
+                        result = await getFacebookProfile({ url: platformUrl });
+                        break;
+                    case 'threads':
+                        result = await getThreadsProfile({ url: platformUrl });
+                        break;
+                    default:
+                        // Fallback to generic platform analytics
+                        result = await getPlatformAnalytics(platformUrl);
+                }
             }
 
             console.log(`Analytics result for ${platform}:`, result);
 
-            if (result.data && result.data.supported !== false) {
-                // Store the platform URL in user profile for future reference
-                const urlField = `${platform}_url`;
-                await User.updateMyUserData({ [urlField]: platformUrl });
-
+            if (result.data) {
+                // Update the analytics state with the new platform data
                 setAnalytics(prev => ({
                     ...prev,
                     [platform]: {
                         ...result.data,
-                        external_url: platformUrl,
                         last_updated: new Date().toISOString()
                     }
                 }));
 
-                // Note: In a real implementation, you might want to re-fetch user data here
-                // For now, we'll assume the user data is up to date
+                // If this was a new connection, update the user's profile with the URL
+                if (!isPlatformConnected(platform)) {
+                    const urlField = `${platform}_url`;
+                    const userData = { [urlField]: platformUrl };
+                    await updateUser(userData);
+                }
             } else {
-                const errorMsg = result.data?.error || result.error || 'Failed to fetch analytics';
-                console.error(`Analytics API error for ${platform}:`, errorMsg);
-                setError(`Failed to fetch ${platform} analytics: ${errorMsg}`);
+                throw new Error('No data returned from analytics API');
             }
-        } catch (err) {
-            console.error(`Error fetching analytics for ${platform}:`, err);
-
-            // Handle specific error cases with user-friendly messages
-            let errorMessage = '';
-
-            // Check if it's an axios error with response data
-            if (err.response && err.response.data && err.response.data.error) {
-                errorMessage = err.response.data.error;
-            } else if (err.data && err.data.error) {
-                errorMessage = err.data.error;
-            } else if (err.message) {
-                errorMessage = err.message;
-            } else {
-                errorMessage = err.toString() || 'Network error occurred';
-            }
-
-            // Capitalize platform name for display
-            const capitalizedPlatform = platform.charAt(0).toUpperCase() + platform.slice(1);
-
-            // Handle private profile errors gracefully
-            if (errorMessage.toLowerCase().includes('private')) {
-                errorMessage = `This ${capitalizedPlatform} profile is private and cannot be analyzed. Please try a public profile or business page.`;
-            } else if (errorMessage.toLowerCase().includes('not found') || errorMessage.toLowerCase().includes('invalid response structure') || errorMessage.toLowerCase().includes('could not find')) {
-                errorMessage = `Could not find this ${capitalizedPlatform} profile. Please check the URL and try again.`;
-            } else if (errorMessage.toLowerCase().includes('api key') || errorMessage.toLowerCase().includes('service unavailable')) {
-                errorMessage = `Analytics service for ${capitalizedPlatform} is temporarily unavailable. Please try again later.`;
-            } else if (errorMessage.toLowerCase().includes('rate limit')) {
-                errorMessage = `Too many requests to ${capitalizedPlatform}. Please wait a moment and try again.`;
-            } else {
-                // If we don't have a specific handler, show the original error with context
-                errorMessage = `Unable to connect to ${capitalizedPlatform}: ${errorMessage}`;
-            }
-
-            setError(errorMessage);
+        } catch (error) {
+            console.error(`${platform} analytics error:`, error);
+            setError(`Failed to fetch ${platform} analytics: ${error.message}`);
         } finally {
             setFetchingPlatforms(prev => {
                 const newSet = new Set(prev);
@@ -1322,7 +1023,7 @@ export default function AnalyticsPage() {
             }
 
             if (urlToRefresh) {
-                await handleFetchAnalytics(urlToRefresh);
+                await handlePlatformAnalyticsFetch(urlToRefresh);
             } else {
                 console.warn(`Cannot refresh ${platform}: No URL found.`);
                 setError(`Cannot refresh ${platform}: No URL found. Please reconnect this platform.`);
@@ -1493,7 +1194,7 @@ export default function AnalyticsPage() {
                 <TabsContent value="platforms" className="mt-8">
                     {/* Platform Connection Grid */}
                     <PlatformConnectionGrid
-                        onConnect={handleFetchAnalytics}
+                        onConnect={handlePlatformAnalyticsFetch}
                         isConnecting={fetchingPlatforms.size > 0}
                         user={user}
                         onSpotifyAuth={handleSpotifyAuth}
@@ -1505,7 +1206,7 @@ export default function AnalyticsPage() {
                             <h2 className="text-xl font-bold text-slate-900 mb-6">Connected Platforms</h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 {connectedPlatforms.map(platform => (
-                                    <AnalyticsStatCard
+                                    <PlatformStatCard
                                         key={platform}
                                         platform={platform}
                                         data={analytics[platform] || { followers: 0, growth: 0 }}

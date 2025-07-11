@@ -5,41 +5,6 @@ export const getCreatorAnalytics = async (period = '30d') => {
   return apiClient.post('/base44/creator-analytics', { period });
 };
 
-// Platform-specific analytics using ScrapeCreators API
-export const getPlatformAnalytics = async (platformUrl) => {
-  return apiClient.post('/base44/creator-analytics', { platform_url: platformUrl });
-};
-
-// Get platform profile data with explicit platform specification
-export const getPlatformProfile = async ({ url, platform }) => {
-  return apiClient.post('/base44/platform-profile', { url, platform });
-};
-
-// Platform-specific functions for better type safety and organization
-export const getYouTubeProfile = async ({ url }) => {
-  return apiClient.post('/base44/platform-profile', { url, platform: 'youtube' });
-};
-
-export const getInstagramProfile = async ({ url }) => {
-  return apiClient.post('/base44/platform-profile', { url, platform: 'instagram' });
-};
-
-export const getTikTokProfile = async ({ url }) => {
-  return apiClient.post('/base44/platform-profile', { url, platform: 'tiktok' });
-};
-
-export const getTwitterProfile = async ({ url }) => {
-  return apiClient.post('/base44/platform-profile', { url, platform: 'twitter' });
-};
-
-export const getFacebookProfile = async ({ url }) => {
-  return apiClient.post('/base44/platform-profile', { url, platform: 'facebook' });
-};
-
-export const getThreadsProfile = async ({ url }) => {
-  return apiClient.post('/base44/platform-profile', { url, platform: 'threads' });
-};
-
 export const getAIInsights = async (data) => {
   return apiClient.post('/base44/ai-insights', { data });
 };
@@ -53,27 +18,27 @@ export const getYouTubeChannel = async (channelId) => {
   return apiClient.post('/base44/youtube-channel', { channelId });
 };
 
-export const getTikTokProfileByUsername = async (username) => {
+export const getTikTokProfile = async (username) => {
   // This would be implemented when TikTok API integration is added
   return Promise.reject(new Error('TikTok integration not implemented yet'));
 };
 
-export const getTwitterProfileByUsername = async (username) => {
+export const getTwitterProfile = async (username) => {
   // This would be implemented when Twitter API integration is added
   return Promise.reject(new Error('Twitter integration not implemented yet'));
 };
 
-export const getFacebookProfileByPageId = async (pageId) => {
+export const getFacebookProfile = async (pageId) => {
   // This would be implemented when Facebook API integration is added
   return Promise.reject(new Error('Facebook integration not implemented yet'));
 };
 
-export const getThreadsProfileByUsername = async (username) => {
+export const getThreadsProfile = async (username) => {
   // This would be implemented when Threads API integration is added
   return Promise.reject(new Error('Threads integration not implemented yet'));
 };
 
-export const getInstagramProfileByUsername = async (username) => {
+export const getInstagramProfile = async (username) => {
   // This would be implemented when Instagram API integration is added
   return Promise.reject(new Error('Instagram integration not implemented yet'));
 };

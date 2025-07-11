@@ -1,5 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://lucy-backend.herokuapp.com/api';
-const BACKEND_URL = 'https://lucy-backend.herokuapp.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.lucysounds.com/api';
+const BACKEND_URL = 'https://api.lucysounds.com/api';
 
 console.log('API client initialized with base URL:', API_BASE_URL);
 
@@ -7,9 +7,6 @@ class ApiClient {
   constructor() {
     this.baseURL = API_BASE_URL;
     this.token = localStorage.getItem('auth_token');
-    
-    // Log initial token state
-    console.log('API client initialized with token:', this.token ? 'present' : 'null');
   }
 
   setToken(token) {
@@ -45,15 +42,11 @@ class ApiClient {
       headers: this.getHeaders(),
       ...options,
       mode: 'cors',
-      credentials: 'include' // Include cookies if any
     };
 
     try {
       console.log(`Making API request to ${url}`);
       const response = await fetch(url, config);
-      
-      // Log response status
-      console.log(`API response status: ${response.status}`);
       
       // Handle 401 Unauthorized errors by attempting to refresh the token
       if (response.status === 401) {
@@ -87,23 +80,11 @@ class ApiClient {
       }
       
       if (!response.ok) {
-        // Try to parse error message from response
-        try {
-          const errorData = await response.json();
-          throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
-        } catch (parseError) {
-          // If we can't parse JSON, use status text
-          throw new Error(`HTTP ${response.status} ${response.statusText}`);
-        }
+        const error = await response.json().catch(() => ({ error: 'Network error' }));
+        throw new Error(error.error || `HTTP ${response.status}`);
       }
       
-      // For successful responses, try to parse JSON
-      try {
-        return await response.json();
-      } catch (parseError) {
-        console.warn('Response is not valid JSON:', parseError);
-        return { success: true };
-      }
+      return await response.json();
     } catch (error) {
       // Don't log authentication errors as they're expected
       if (!error.message.includes('401') && !error.message.includes('No token provided')) {
@@ -211,10 +192,6 @@ class ApiClient {
   async getCurrentUser() {
     console.log('Getting current user, token available:', !!this.token);
     
-    if (!this.token) {
-      throw new Error('No authentication token available');
-    }
-    
     try {
       // First try with Supabase directly
       const { supabase } = await import('@/api/supabase-auth');
@@ -230,9 +207,7 @@ class ApiClient {
         console.log('User data obtained from Supabase:', userData.user);
         return { user: userData.user };
       } else {
-        console.log('No user data in Supabase response');
-        // Fall back to backend API
-        return await this.request('/auth/me');
+        throw new Error('No user data found in Supabase response');
       }
     } catch (error) {
       // If it's a 401 error, the user is not authenticated
@@ -248,10 +223,6 @@ class ApiClient {
 
   async refreshToken(refreshToken) {
     console.log('Attempting to refresh token');
-    
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
     
     try {
       // First try with Supabase directly
@@ -380,7 +351,799 @@ class ApiClient {
       body: JSON.stringify({ criteria, sort, limit }),
     });
   }
+
+  async listStories(sort = '-created_date', limit = 50) {
+    return this.request(`/stories?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterStories(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/stories/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async getStory(id) {
+    return this.request(`/stories/${id}`);
+  }
+
+  async listComments(sort = '-created_date', limit = 50) {
+    return this.request(`/comments?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterComments(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/comments/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async filterLikes(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/likes/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async createFollow(data) {
+    return this.request('/follows', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFollow(id) {
+    return this.request(`/follows/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async filterFollows(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/follows/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async createNotification(data) {
+    return this.request('/notifications', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteNotification(id) {
+    return this.request(`/notifications/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async filterNotifications(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/notifications/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async createSavedPost(data) {
+    return this.request('/saved-posts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSavedPost(id) {
+    return this.request(`/saved-posts/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async filterSavedPosts(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/saved-posts/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async createCollaboration(data) {
+    return this.request('/collaborations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCollaboration(id, data) {
+    return this.request(`/collaborations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCollaboration(id) {
+    return this.request(`/collaborations/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getCollaboration(id) {
+    return this.request(`/collaborations/${id}`);
+  }
+
+  async filterCollaborations(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/collaborations/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async createSongRegistration(data) {
+    return this.request('/song-registrations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSongRegistration(id, data) {
+    return this.request(`/song-registrations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSongRegistration(id) {
+    return this.request(`/song-registrations/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getSongRegistration(id) {
+    return this.request(`/song-registrations/${id}`);
+  }
+
+  async filterSongRegistrations(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/song-registrations/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  // Web3Drop methods
+  async getWeb3Drops() {
+    return this.request('/web3-drops');
+  }
+
+  async createWeb3Drop(data) {
+    return this.request('/web3-drops', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateWeb3Drop(id, data) {
+    return this.request(`/web3-drops/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listWeb3Drops(sort = '-created_date', limit = 50) {
+    return this.request(`/web3-drops?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterWeb3Drops(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/web3-drops/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  // Methods for other entities (DigitalStore, Royalty, Fan, etc.)
+  async getDigitalStores() {
+    return this.request('/digital-stores');
+  }
+
+  async createDigitalStore(data) {
+    return this.request('/digital-stores', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateDigitalStore(id, data) {
+    return this.request(`/digital-stores/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listDigitalStores(sort = '-created_date', limit = 50) {
+    return this.request(`/digital-stores?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterDigitalStores(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/digital-stores/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  // Implement similar methods for other entities
+  async getRoyalties() {
+    return this.request('/royalties');
+  }
+
+  async createRoyalty(data) {
+    return this.request('/royalties', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateRoyalty(id, data) {
+    return this.request(`/royalties/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listRoyalties(sort = '-created_date', limit = 50) {
+    return this.request(`/royalties?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterRoyalties(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/royalties/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async getFans() {
+    return this.request('/fans');
+  }
+
+  async createFan(data) {
+    return this.request('/fans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateFan(id, data) {
+    return this.request(`/fans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listFans(sort = '-created_date', limit = 50) {
+    return this.request(`/fans?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterFans(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/fans/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async createPromotion(data) {
+    return this.request('/promotions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePromotion(id, data) {
+    return this.request(`/promotions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePromotion(id) {
+    return this.request(`/promotions/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async listPromotions(sort = '-created_date', limit = 50) {
+    return this.request(`/promotions?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterPromotions(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/promotions/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async getReleaseDropPlans() {
+    return this.request('/release-drop-plans');
+  }
+
+  async createReleaseDropPlan(data) {
+    return this.request('/release-drop-plans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateReleaseDropPlan(id, data) {
+    return this.request(`/release-drop-plans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listReleaseDropPlans(sort = '-created_date', limit = 50) {
+    return this.request(`/release-drop-plans?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterReleaseDropPlans(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/release-drop-plans/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async getPreSaves() {
+    return this.request('/pre-saves');
+  }
+
+  async createPreSave(data) {
+    return this.request('/pre-saves', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePreSave(id, data) {
+    return this.request(`/pre-saves/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listPreSaves(sort = '-created_date', limit = 50) {
+    return this.request(`/pre-saves?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterPreSaves(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/pre-saves/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async getDistributionServices() {
+    return this.request('/distribution-services');
+  }
+
+  async createDistributionService(data) {
+    return this.request('/distribution-services', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateDistributionService(id, data) {
+    return this.request(`/distribution-services/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listDistributionServices(sort = '-created_date', limit = 50) {
+    return this.request(`/distribution-services?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterDistributionServices(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/distribution-services/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async getStats() {
+    return this.request('/stats');
+  }
+
+  async createStat(data) {
+    return this.request('/stats', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateStat(id, data) {
+    return this.request(`/stats/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listStats(sort = '-created_date', limit = 50) {
+    return this.request(`/stats?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterStats(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/stats/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async getSupportRequests() {
+    return this.request('/support-requests');
+  }
+
+  async createSupportRequest(data) {
+    return this.request('/support-requests', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSupportRequest(id, data) {
+    return this.request(`/support-requests/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listSupportRequests(sort = '-created_date', limit = 50) {
+    return this.request(`/support-requests?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterSupportRequests(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/support-requests/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async getMentors() {
+    return this.request('/mentors');
+  }
+
+  async createMentor(data) {
+    return this.request('/mentors', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateMentor(id, data) {
+    return this.request(`/mentors/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listMentors(sort = '-created_date', limit = 50) {
+    return this.request(`/mentors?sort=${sort}&limit=${limit}`);
+  }
+
+  async filterMentors(criteria, sort = '-created_date', limit = 50) {
+    return this.request('/mentors/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async createChatRoom(data) {
+    return this.request('/chat-rooms', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateChatRoom(id, data) {
+    return this.request(`/chat-rooms/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteChatRoom(id) {
+    return this.request(`/chat-rooms/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getChatRoom(id) {
+    return this.request(`/chat-rooms/${id}`);
+  }
+
+  async filterChatRooms(criteria, sort = '-last_message_at', limit = 50) {
+    return this.request('/chat-rooms/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async createMessage(data) {
+    return this.request('/messages', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteMessage(id) {
+    return this.request(`/messages/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async filterMessages(criteria, sort = 'created_date', limit = 100) {
+    return this.request('/messages/filter', {
+      method: 'POST',
+      body: JSON.stringify({ criteria, sort, limit }),
+    });
+  }
+
+  async followUser(userId) {
+    return this.request(`/users/${userId}/follow`, {
+      method: 'POST',
+    });
+  }
+
+  async unfollowUser(userId) {
+    return this.request(`/users/${userId}/follow`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getUserFollowers(userId, page = 1, limit = 20) {
+    return this.request(`/users/${userId}/followers?page=${page}&limit=${limit}`);
+  }
+
+  async getUserFollowing(userId, page = 1, limit = 20) {
+    return this.request(`/users/${userId}/following?page=${page}&limit=${limit}`);
+  }
+
+  // Track endpoints
+  async getTracks(page = 1, limit = 20) {
+    return this.request(`/tracks?page=${page}&limit=${limit}`);
+  }
+
+  async getTrack(id) {
+    return this.request(`/tracks/${id}`);
+  }
+
+  async createTrack(trackData) {
+    return this.request('/tracks', {
+      method: 'POST',
+      body: JSON.stringify(trackData),
+    });
+  }
+
+  async updateTrack(id, trackData) {
+    return this.request(`/tracks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(trackData),
+    });
+  }
+
+  async deleteTrack(id) {
+    return this.request(`/tracks/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getPublicTracks(page = 1, limit = 20, genre, sort = 'latest') {
+    const params = new URLSearchParams({ page, limit, sort });
+    if (genre) params.append('genre', genre);
+    return this.request(`/tracks/public/feed?${params}`);
+  }
+
+  async likeTrack(id) {
+    return this.request(`/tracks/${id}/like`, {
+      method: 'POST',
+    });
+  }
+
+  async unlikeTrack(id) {
+    return this.request(`/tracks/${id}/like`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Release endpoints
+  async getReleases(page = 1, limit = 20) {
+    return this.request(`/releases?page=${page}&limit=${limit}`);
+  }
+
+  async createRelease(releaseData) {
+    return this.request('/releases', {
+      method: 'POST',
+      body: JSON.stringify(releaseData),
+    });
+  }
+
+  async addTrackToRelease(releaseId, trackId) {
+    return this.request(`/releases/${releaseId}/tracks`, {
+      method: 'POST',
+      body: JSON.stringify({ track_id: trackId }),
+    });
+  }
+
+  // Post endpoints
+  async getPostsFeed(page = 1, limit = 20) {
+    return this.request(`/posts/feed?page=${page}&limit=${limit}`);
+  }
+
+  async createPost(postData) {
+    return this.request('/posts', {
+      method: 'POST',
+      body: JSON.stringify(postData),
+    });
+  }
+
+  async getPost(id) {
+    return this.request(`/posts/${id}`);
+  }
+
+  async updatePost(id, postData) {
+    return this.request(`/posts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(postData),
+    });
+  }
+
+  async deletePost(id) {
+    return this.request(`/posts/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async likePost(id) {
+    return this.request(`/posts/${id}/like`, {
+      method: 'POST',
+    });
+  }
+
+  async unlikePost(id) {
+    return this.request(`/posts/${id}/like`, {
+      method: 'DELETE',
+    });
+  }
+
+  async addComment(postId, content) {
+    return this.request(`/posts/${postId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  }
+
+  // Story endpoints
+  async getStoriesFeed() {
+    return this.request('/stories/feed');
+  }
+
+  async createStory(storyData) {
+    return this.request('/stories', {
+      method: 'POST',
+      body: JSON.stringify(storyData),
+    });
+  }
+
+  async deleteStory(id) {
+    return this.request(`/stories/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Collaboration endpoints
+  async getCollaborations() {
+    return this.request('/collaborations');
+  }
+
+  async createCollaboration(collaborationData) {
+    return this.request('/collaborations', {
+      method: 'POST',
+      body: JSON.stringify(collaborationData),
+    });
+  }
+
+  async respondToCollaboration(id, response) {
+    return this.request(`/collaborations/${id}/respond`, {
+      method: 'PUT',
+      body: JSON.stringify(response),
+    });
+  }
+
+  // Notification endpoints
+  async getNotifications(page = 1, limit = 20) {
+    return this.request(`/notifications?page=${page}&limit=${limit}`);
+  }
+
+  async markNotificationAsRead(id) {
+    return this.request(`/notifications/${id}/read`, {
+      method: 'PUT',
+    });
+  }
+
+  async markAllNotificationsAsRead() {
+    return this.request('/notifications/read-all', {
+      method: 'PUT',
+    });
+  }
+
+  // Chat endpoints
+  async getChatRooms() {
+    return this.request('/chat/rooms');
+  }
+
+  async getMessages(roomId, page = 1, limit = 50) {
+    return this.request(`/chat/rooms/${roomId}/messages?page=${page}&limit=${limit}`);
+  }
+
+  async sendMessage(roomId, content) {
+    return this.request(`/chat/rooms/${roomId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  }
+
+  // Analytics endpoints
+  async getUserAnalytics(period = '30d') {
+    return this.request(`/analytics/user?period=${period}`);
+  }
+
+  // Upload endpoints
+  async uploadFile(file, type = 'general') {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', type);
+
+    const url = `${this.baseURL}/upload`;
+    const config = {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+      },
+      body: formData,
+    };
+
+    try {
+      const response = await fetch(url, config);
+      
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(error.error || `HTTP ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('File upload failed:', error);
+      throw error;
+    }
+  }
+
+  async deleteFile(filename) {
+    return this.request(`/upload/${filename}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Admin endpoints
+  async getAdminUsers(page = 1, limit = 20) {
+    return this.request(`/admin/users?page=${page}&limit=${limit}`);
+  }
+
+  async updateUserRole(userId, role) {
+    return this.request(`/admin/users/${userId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async getAdminStats() {
+    return this.request('/admin/stats');
+  }
 }
 
+// Create and export a singleton instance
 const apiClient = new ApiClient();
-export default apiClient;
+export default apiClient; 

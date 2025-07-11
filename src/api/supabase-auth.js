@@ -1,17 +1,22 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Fixed Supabase credentials - using hardcoded values to ensure they're correct
-// Remove any line breaks that might have been introduced in the .env file
-const supabaseUrl = 'https://bxgdijqjdtbgzycvngug.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.T_KZxQHOxYvgIYLGpDXVqCj9Vgdp8YFvgSt0JHsLvAc';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 console.log('Supabase configuration:', {
   url: supabaseUrl,
-  hasAnonKey: !!supabaseAnonKey,
-  keyLength: supabaseAnonKey.length
+  keyLength: supabaseAnonKey ? supabaseAnonKey.length : 0
 });
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables. URL or key is undefined.');
+  throw new Error('Missing Supabase environment variables');
+}
+
+// Remove any trailing newlines or whitespace that might have been introduced
+const cleanedAnonKey = supabaseAnonKey.trim();
+
+export const supabase = createClient(supabaseUrl, cleanedAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
@@ -38,10 +43,15 @@ export const auth = {
   // Get current user
   getUser: async () => {
     console.log('Getting user from Supabase');
-    const { data: { user }, error } = await supabase.auth.getUser();
-    console.log('User result:', { hasUser: !!user, error: error?.message });
-    if (error) throw error;
-    return user;
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      console.log('User result:', { hasUser: !!user, error: error?.message });
+      if (error) throw error;
+      return user;
+    } catch (error) {
+      console.error('Error getting user:', error.message);
+      throw error;
+    }
   },
 
   // Sign up with email and password

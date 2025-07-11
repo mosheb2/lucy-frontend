@@ -170,7 +170,7 @@ export const AuthProvider = ({ children }) => {
       console.log(`Initiating OAuth sign-in with provider: ${provider}`);
       
       // For OAuth, we'll need to implement this through the backend
-      const backendUrl = import.meta.env.VITE_API_URL || 'https://lucy-backend.herokuapp.com/api';
+      const backendUrl = import.meta.env.VITE_API_URL || 'https://api.lucysounds.com/api';
       
       // Store the current URL as the intended return URL
       const returnUrl = window.location.href;
@@ -209,4 +209,4 @@ export const AuthProvider = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
-};
+}; 

@@ -66,85 +66,10 @@ const AuthCallback = () => {
         const debug = {
           hash: location.hash,
           search: location.search,
-          pathname: location.pathname
+          pathname: location.pathname,
+          origin: window.location.origin
         };
         setDebugInfo(debug);
-        
-        // Extract tokens directly from hash using our helper function
-        if (location.hash) {
-          console.log('Extracting tokens from hash...');
-          const tokens = extractTokensFromHash(location.hash);
-          console.log('Extracted tokens:', { 
-            hasAccessToken: !!tokens.accessToken,
-            hasRefreshToken: !!tokens.refreshToken,
-            tokenType: tokens.tokenType
-          });
-          
-          if (tokens.accessToken) {
-            console.log('Found access token in hash, setting up session...');
-            
-            // Set the token for API calls
-            apiClient.setToken(tokens.accessToken);
-            
-            // Store tokens in localStorage
-            localStorage.setItem('auth_token', tokens.accessToken);
-            if (tokens.refreshToken) {
-              localStorage.setItem('refresh_token', tokens.refreshToken);
-            }
-            
-            // Try to get user data with the token
-            try {
-              // First try with Supabase
-              const { data: userData, error: userError } = await supabase.auth.getUser(tokens.accessToken);
-              
-              if (!userError && userData?.user) {
-                console.log('User data obtained from Supabase:', userData.user);
-                
-                // Update user in context
-                updateUser(userData.user);
-                
-                // Store user data in localStorage
-                localStorage.setItem('user_authenticated', 'true');
-                localStorage.setItem('user_id', userData.user.id);
-                
-                // Redirect to dashboard
-                setStatus('Authentication successful! Redirecting...');
-                setTimeout(() => {
-                  navigate('/Dashboard', { replace: true });
-                }, 500);
-                return;
-              } else {
-                console.error('Error getting user with token from Supabase:', userError);
-                // If Supabase fails, try with backend API
-                try {
-                  const apiUserData = await apiClient.getCurrentUser();
-                  
-                  if (apiUserData && apiUserData.user) {
-                    console.log('User data obtained from API:', apiUserData.user);
-                    
-                    // Update user in context
-                    updateUser(apiUserData.user);
-                    
-                    // Store user data in localStorage
-                    localStorage.setItem('user_authenticated', 'true');
-                    localStorage.setItem('user_id', apiUserData.user.id);
-                    
-                    // Redirect to dashboard
-                    setStatus('Authentication successful! Redirecting...');
-                    setTimeout(() => {
-                      navigate('/Dashboard', { replace: true });
-                    }, 500);
-                    return;
-                  }
-                } catch (apiError) {
-                  console.error('Error getting user data from API:', apiError);
-                }
-              }
-            } catch (userError) {
-              console.error('Error getting user data with token:', userError);
-            }
-          }
-        }
         
         // First, try to directly exchange the code if it exists in the URL
         if (location.search && location.search.includes('code=')) {
@@ -205,54 +130,32 @@ const AuthCallback = () => {
           }
         }
         
-        // Try to manually extract tokens from URL
-        if (location.hash || location.search) {
-          console.log('Trying to extract tokens from URL...');
+        // Extract tokens directly from hash using our helper function
+        if (location.hash) {
+          console.log('Extracting tokens from hash...');
+          const tokens = extractTokensFromHash(location.hash);
+          console.log('Extracted tokens:', { 
+            hasAccessToken: !!tokens.accessToken,
+            hasRefreshToken: !!tokens.refreshToken,
+            tokenType: tokens.tokenType
+          });
           
-          // Try hash fragment first
-          let accessToken = null;
-          let refreshToken = null;
-          
-          if (location.hash) {
-            // Handle hash format: #access_token=xxx&token_type=bearer&...
-            const hashParams = new URLSearchParams(location.hash.substring(1));
-            accessToken = hashParams.get('access_token');
-            refreshToken = hashParams.get('refresh_token');
-            
-            // If URLSearchParams doesn't work, try manual parsing
-            if (!accessToken) {
-              const hashParts = location.hash.substring(1).split('&');
-              for (const part of hashParts) {
-                const [key, value] = part.split('=');
-                if (key === 'access_token') accessToken = value;
-                if (key === 'refresh_token') refreshToken = value;
-              }
-            }
-          }
-          
-          // If not in hash, try search params
-          if (!accessToken && location.search) {
-            const searchParams = new URLSearchParams(location.search);
-            accessToken = searchParams.get('access_token');
-            refreshToken = searchParams.get('refresh_token');
-          }
-          
-          if (accessToken) {
-            console.log('Found access token in URL, setting up session...');
+          if (tokens.accessToken) {
+            console.log('Found access token in hash, setting up session...');
             
             // Set the token for API calls
-            apiClient.setToken(accessToken);
+            apiClient.setToken(tokens.accessToken);
             
             // Store tokens in localStorage
-            localStorage.setItem('auth_token', accessToken);
-            if (refreshToken) {
-              localStorage.setItem('refresh_token', refreshToken);
+            localStorage.setItem('auth_token', tokens.accessToken);
+            if (tokens.refreshToken) {
+              localStorage.setItem('refresh_token', tokens.refreshToken);
             }
             
             // Try to get user data with the token
             try {
               // First try with Supabase
-              const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
+              const { data: userData, error: userError } = await supabase.auth.getUser();
               
               if (!userError && userData?.user) {
                 console.log('User data obtained from Supabase:', userData.user);
@@ -271,6 +174,7 @@ const AuthCallback = () => {
                 }, 500);
                 return;
               } else {
+                console.error('Error getting user with token from Supabase:', userError);
                 // If Supabase fails, try with backend API
                 try {
                   const apiUserData = await apiClient.getCurrentUser();
@@ -335,7 +239,7 @@ const AuthCallback = () => {
           localStorage.setItem('refresh_token', session.refresh_token);
           
           // Get user data from Supabase
-          const { data: userData, error: userError } = await supabase.auth.getUser(token);
+          const { data: userData, error: userError } = await supabase.auth.getUser();
           
           if (userError) {
             console.error('Error getting user data from Supabase:', userError);
@@ -461,4 +365,4 @@ const AuthCallback = () => {
   );
 };
 
-export default AuthCallback;
+export default AuthCallback; 

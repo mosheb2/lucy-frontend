@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Mail, Lock, Eye, EyeOff, Facebook, Chrome, Wallet } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/api/supabase-auth';
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -36,16 +35,6 @@ export default function LoginPage() {
     if (errorMessage) {
       setError(decodeURIComponent(errorMessage));
     }
-    
-    // Check Supabase configuration
-    console.log('Checking Supabase configuration on Login page');
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        console.error('Supabase session check error:', error);
-      } else {
-        console.log('Supabase session check result:', { hasSession: !!data.session });
-      }
-    });
   }, [isAuthenticated, navigate, location]);
 
   const handleSubmit = async (e) => {
@@ -54,52 +43,17 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // First try direct Supabase login
-      console.log('Attempting direct Supabase login');
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password
-        });
-        
-        if (error) {
-          console.error('Direct Supabase login error:', error);
-          // Fall back to API login
-          const response = await signIn({
-            email: formData.email,
-            password: formData.password
-          });
-          
-          if (response.user && response.session) {
-            // Redirect to Dashboard or to the intended page if available
-            const from = location.state?.from?.pathname || '/Dashboard';
-            navigate(from, { replace: true });
-          } else {
-            setError('Login failed - no user data received');
-          }
-        } else if (data.user && data.session) {
-          console.log('Direct Supabase login successful');
-          // Redirect to Dashboard or to the intended page if available
-          const from = location.state?.from?.pathname || '/Dashboard';
-          navigate(from, { replace: true });
-        } else {
-          setError('Login failed - no user data received from Supabase');
-        }
-      } catch (supabaseError) {
-        console.error('Supabase login exception:', supabaseError);
-        // Fall back to API login
-        const response = await signIn({
-          email: formData.email,
-          password: formData.password
-        });
-        
-        if (response.user && response.session) {
-          // Redirect to Dashboard or to the intended page if available
-          const from = location.state?.from?.pathname || '/Dashboard';
-          navigate(from, { replace: true });
-        } else {
-          setError('Login failed - no user data received');
-        }
+      const { user, session } = await signIn({
+        email: formData.email,
+        password: formData.password
+      });
+
+      if (user && session) {
+        // Redirect to Dashboard or to the intended page if available
+        const from = location.state?.from?.pathname || '/Dashboard';
+        navigate(from, { replace: true });
+      } else {
+        setError('Login failed - no user data received');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -114,39 +68,7 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // Try direct Supabase OAuth first
-      if (provider !== 'solana') {
-        try {
-          console.log(`Attempting direct Supabase OAuth with ${provider}`);
-          const { data, error } = await supabase.auth.signInWithOAuth({
-            provider,
-            options: {
-              redirectTo: `${window.location.origin}/auth/callback`
-            }
-          });
-          
-          if (error) {
-            console.error(`Direct Supabase OAuth error with ${provider}:`, error);
-            // Fall back to API OAuth
-            await signInWithOAuth(provider);
-          } else if (data && data.url) {
-            console.log(`Direct Supabase OAuth successful with ${provider}, redirecting to:`, data.url);
-            window.location.href = data.url;
-            return;
-          } else {
-            console.error(`Direct Supabase OAuth failed with ${provider} - no URL received`);
-            // Fall back to API OAuth
-            await signInWithOAuth(provider);
-          }
-        } catch (supabaseError) {
-          console.error(`Supabase OAuth exception with ${provider}:`, supabaseError);
-          // Fall back to API OAuth
-          await signInWithOAuth(provider);
-        }
-      } else {
-        // For Solana, always use API OAuth
-        await signInWithOAuth(provider);
-      }
+      await signInWithOAuth(provider);
     } catch (error) {
       console.error('OAuth signin error:', error);
       setError(error.message || `Failed to sign in with ${provider}`);
@@ -292,6 +214,28 @@ export default function LoginPage() {
                   <Wallet className="w-4 h-4 mr-2" />
                   Solana
                 </Button>
+              </div>
+            </form>
+            
+            <div className="mt-6 text-center">
+              <p className="text-sm text-slate-600">
+                Don't have an account?{' '}
+                <Button
+                  variant="link"
+                  className="text-purple-600 hover:text-purple-700 p-0 h-auto font-semibold"
+                  onClick={handleSignupClick}
+                  disabled={isLoading}
+                >
+                  Create an account
+                </Button>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+} 
               </div>
             </form>
             

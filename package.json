@@ -4,7 +4,7 @@
   "description": "Lucy Sounds Frontend",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node setup-env.js && vite build",
     "preview": "vite preview",
     "start": "node server.js"
   },

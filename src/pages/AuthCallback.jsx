@@ -67,66 +67,86 @@ const AuthCallback = () => {
           hash: location.hash,
           search: location.search,
           pathname: location.pathname,
-          origin: window.location.origin
+          origin: window.location.origin,
+          fullUrl: window.location.href
         };
         setDebugInfo(debug);
+        console.log('Auth callback debug info:', debug);
         
         // First, try to directly exchange the code if it exists in the URL
         if (location.search && location.search.includes('code=')) {
           console.log('Found code in URL, attempting direct exchange...');
-          const searchParams = new URLSearchParams(location.search);
-          const code = searchParams.get('code');
           
-          if (code) {
-            console.log('Exchanging code for session...');
-            try {
-              const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-              
-              console.log('Code exchange response:', data);
-              
-              if (exchangeError) {
-                console.error('Error exchanging code for session:', exchangeError);
-                setError(`Error exchanging code: ${exchangeError.message}`);
-                return;
-              }
-              
-              if (data && data.session) {
-                console.log('Session obtained from code exchange:', data.session);
-                
-                // Set the token for API calls
-                const token = data.session.access_token;
-                apiClient.setToken(token);
-                
-                // Store tokens in localStorage
-                localStorage.setItem('auth_token', token);
-                localStorage.setItem('refresh_token', data.session.refresh_token);
-                
-                // Get user data
-                const userData = data.user;
-                
-                if (userData) {
-                  console.log('User data obtained from code exchange:', userData);
-                  
-                  // Update user in context
-                  updateUser(userData);
-                  
-                  // Store user data in localStorage
-                  localStorage.setItem('user_authenticated', 'true');
-                  localStorage.setItem('user_id', userData.id);
-                  
-                  // Redirect to dashboard
-                  setStatus('Authentication successful! Redirecting...');
-                  setTimeout(() => {
-                    console.log('Navigating to Dashboard...');
-                    navigate('/Dashboard', { replace: true });
-                  }, 500);
-                  return;
-                }
-              }
-            } catch (exchangeError) {
-              console.error('Error in code exchange process:', exchangeError);
-              // Continue to other methods if code exchange fails
+          try {
+            // For Supabase PKCE flow, we need to explicitly exchange the code for a session
+            // This is the most reliable way to handle the callback
+            console.log('Attempting to exchange code for session with full URL');
+            await supabase.auth.exchangeCodeForSession(window.location.href);
+            
+            // After code exchange, check if we have a session
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+            
+            if (sessionError) {
+              console.error('Error getting session after code exchange:', sessionError);
+              setError(`Authentication error: ${sessionError.message}`);
+              return;
             }
+            
+            if (!sessionData?.session) {
+              console.error('No session found after code exchange');
+              setError('No valid session found. Please try logging in again.');
+              return;
+            }
+            
+            console.log('Session obtained after code exchange:', sessionData.session);
+            
+            // Set the token for API calls
+            const token = sessionData.session.access_token;
+            apiClient.setToken(token);
+            
+            // Store tokens in localStorage
+            localStorage.setItem('auth_token', token);
+            localStorage.setItem('refresh_token', sessionData.session.refresh_token);
+            localStorage.setItem('supabase_session', JSON.stringify({
+              access_token: sessionData.session.access_token,
+              refresh_token: sessionData.session.refresh_token,
+              expires_at: sessionData.session.expires_at
+            }));
+            
+            // Get user data
+            const { data: userData, error: userError } = await supabase.auth.getUser();
+            
+            if (userError) {
+              console.error('Error getting user data after code exchange:', userError);
+              setError(`Error getting user data: ${userError.message}`);
+              return;
+            }
+            
+            if (!userData?.user) {
+              console.error('No user data found after code exchange');
+              setError('No user data found. Please try logging in again.');
+              return;
+            }
+            
+            console.log('User data obtained after code exchange:', userData.user);
+            
+            // Update user in context
+            updateUser(userData.user);
+            
+            // Store user data in localStorage
+            localStorage.setItem('user_authenticated', 'true');
+            localStorage.setItem('user_id', userData.user.id);
+            
+            // Redirect to dashboard
+            setStatus('Authentication successful! Redirecting...');
+            setTimeout(() => {
+              console.log('Navigating to Dashboard...');
+              navigate('/Dashboard', { replace: true });
+            }, 500);
+            return;
+          } catch (exchangeError) {
+            console.error('Error in code exchange process:', exchangeError);
+            // Continue to other methods if code exchange fails
           }
         }
         
@@ -248,125 +268,106 @@ const AuthCallback = () => {
           const { data: userData, error: userError } = await supabase.auth.getUser();
           
           if (userError) {
-            console.error('Error getting user data from Supabase:', userError);
+            console.error('Error getting user data:', userError);
             setError(`Error getting user data: ${userError.message}`);
             return;
           }
           
-          if (!userData || !userData.user) {
-            console.error('User data not found in Supabase response');
-            setError('User profile not found. Please try logging in again.');
+          if (!userData?.user) {
+            console.error('No user data found');
+            setError('No user data found. Please try logging in again.');
             return;
           }
           
-          console.log('User profile obtained from Supabase:', userData.user);
-          setStatus('Authentication successful! Redirecting...');
+          console.log('User data obtained:', userData.user);
           
           // Update user in context
           updateUser(userData.user);
           
-          // Store user data in localStorage with explicit logging
-          console.log('Setting authentication data in localStorage');
           // Store user data in localStorage
           localStorage.setItem('user_authenticated', 'true');
           localStorage.setItem('user_id', userData.user.id);
           
-          // Redirect to dashboard or stored return URL
+          // Redirect to dashboard
+          setStatus('Authentication successful! Redirecting...');
           setTimeout(() => {
-            const returnUrl = localStorage.getItem('auth_return_url');
-            if (returnUrl) {
-              localStorage.removeItem('auth_return_url');
-              console.log('Navigating to stored return URL:', returnUrl);
-              window.location.href = returnUrl;
-            } else {
-              console.log('Navigating to Dashboard...');
-              navigate('/Dashboard', { replace: true });
-            }
+            navigate('/Dashboard', { replace: true });
           }, 500);
         } catch (error) {
-          console.error('Error getting session:', error);
-          setError(`Error getting session: ${error.message}`);
+          console.error('Error in auth callback:', error);
+          setError(`Authentication error: ${error.message}`);
         }
       } catch (error) {
-        console.error('Authentication callback error:', error);
+        console.error('Error in auth callback:', error);
         setError(`Authentication error: ${error.message}`);
       }
     };
 
     handleCallback();
-  }, [navigate, location, updateUser]);
+  }, [navigate, updateUser, location]);
 
-  // Add a manual login function for debugging
   const handleManualLogin = () => {
-    try {
-      // Parse the token from the debug info
-      const hash = debugInfo.hash || '';
-      const tokens = extractTokensFromHash(hash);
-      
-      if (tokens.accessToken) {
-        // Set the token for API calls
-        apiClient.setToken(tokens.accessToken);
-        
-        // Store tokens in localStorage
-        localStorage.setItem('auth_token', tokens.accessToken);
-        if (tokens.refreshToken) {
-          localStorage.setItem('refresh_token', tokens.refreshToken);
-        }
-        
-        // Redirect to dashboard
-        navigate('/Dashboard', { replace: true });
-      } else {
-        setError('No access token found in debug info');
-      }
-    } catch (error) {
-      console.error('Manual login error:', error);
-      setError(`Manual login error: ${error.message}`);
-    }
+    navigate('/login', { replace: true });
   };
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-indigo-50 flex flex-col items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">Authentication Error</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <div className="mb-4">
+            <button
+              onClick={handleManualLogin}
+              className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+            >
+              Back to Login
+            </button>
+          </div>
+          
+          {/* Debug information (hidden in production) */}
+          {import.meta.env.DEV && (
+            <div className="mt-8 text-left border-t pt-4">
+              <h3 className="text-sm font-semibold text-gray-500 mb-2">Debug Information</h3>
+              <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-48">
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-50 via-white to-indigo-50 p-4">
-      <div className="w-full max-w-md text-center">
-        <div className="mx-auto w-16 h-16 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full flex items-center justify-center mb-4">
-          <span className="text-2xl font-bold text-white">L</span>
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-indigo-50 flex flex-col items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center">
+        <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
+          <svg className="w-8 h-8 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent mb-4">
+          Authenticating
+        </h2>
+        <p className="text-slate-600 mb-4">{status}</p>
+        <div className="flex justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
         </div>
         
-        <h1 className="text-2xl font-bold text-gray-800 mb-4">
-          {error ? 'Authentication Failed' : 'Authenticating...'}
-        </h1>
-        
-        {!error ? (
-          <>
-            <p className="text-gray-600 mb-4">{status}</p>
-            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-purple-600 to-indigo-600 animate-pulse"></div>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-red-500 mb-6">{error}</p>
-            <div className="flex space-x-4 justify-center">
-              <button
-                onClick={() => navigate('/Login', { replace: true })}
-                className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-lg shadow hover:shadow-lg transition-all duration-300"
-              >
-                Return to Login
-              </button>
-              
-              <button
-                onClick={handleManualLogin}
-                className="px-6 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white font-medium rounded-lg shadow hover:shadow-lg transition-all duration-300"
-              >
-                Try Manual Login
-              </button>
-            </div>
-            
-            {/* Debug information for development */}
-            <div className="mt-6 text-xs text-left bg-gray-100 p-4 rounded-md overflow-auto max-h-40">
-              <p className="font-semibold mb-1">Debug Info:</p>
-              <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
-            </div>
-          </>
+        {/* Debug information (hidden in production) */}
+        {import.meta.env.DEV && (
+          <div className="mt-8 text-left border-t pt-4">
+            <h3 className="text-sm font-semibold text-gray-500 mb-2">Debug Information</h3>
+            <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-48">
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+          </div>
         )}
       </div>
     </div>

@@ -5,11 +5,16 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 console.log('Supabase configuration:', {
   url: supabaseUrl,
-  keyLength: supabaseAnonKey ? supabaseAnonKey.length : 0
+  hasAnonKey: !!supabaseAnonKey,
+  keyLength: supabaseAnonKey ? supabaseAnonKey.length : 0,
+  envVars: Object.keys(import.meta.env).filter(key => key.includes('SUPABASE'))
 });
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables. URL or key is undefined.');
+  console.error('Missing Supabase environment variables. URL or key is undefined.', {
+    hasUrl: !!supabaseUrl,
+    hasKey: !!supabaseAnonKey
+  });
   throw new Error('Missing Supabase environment variables');
 }
 
@@ -20,7 +25,25 @@ export const supabase = createClient(supabaseUrl, cleanedAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    flowType: 'pkce', // Use PKCE flow for better security
+    debug: true, // Enable debug mode for more detailed logs
+    storage: {
+      getItem: (key) => {
+        console.log(`Getting item from storage: ${key}`);
+        const value = localStorage.getItem(key);
+        console.log(`Storage value for ${key}:`, value ? 'exists' : 'not found');
+        return value;
+      },
+      setItem: (key, value) => {
+        console.log(`Setting item in storage: ${key}`);
+        localStorage.setItem(key, value);
+      },
+      removeItem: (key) => {
+        console.log(`Removing item from storage: ${key}`);
+        localStorage.removeItem(key);
+      }
+    }
   }
 });
 
@@ -65,7 +88,7 @@ export const auth = {
           full_name,
           username,
         },
-        emailRedirectTo: `${window.location.origin}/Dashboard`
+        emailRedirectTo: `${window.location.origin}/auth/callback`
       }
     });
     
@@ -84,16 +107,42 @@ export const auth = {
     
     console.log('Sign in result:', { success: !!data?.user, error: error?.message });
     if (error) throw error;
+    
+    // Store session data in localStorage for persistence
+    if (data.session) {
+      localStorage.setItem('supabase_session', JSON.stringify({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at
+      }));
+      console.log('Stored Supabase session in localStorage');
+    }
+    
     return data;
   },
 
   // Sign in with OAuth provider
   signInWithOAuth: async (provider) => {
     console.log('Signing in with OAuth provider:', provider);
+    
+    // Map provider names to match Supabase's expected format
+    const providerMap = {
+      'facebook': 'facebook',
+      'google': 'google',
+      'solana': 'solana' // Assuming Solana is configured in Supabase
+    };
+    
+    const mappedProvider = providerMap[provider.toLowerCase()] || provider;
+    
     const { data, error } = await supabase.auth.signInWithOAuth({
-      provider,
+      provider: mappedProvider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`
+        redirectTo: `${window.location.origin}/auth/callback`,
+        skipBrowserRedirect: false, // Ensure browser redirects
+        queryParams: {
+          access_type: 'offline', // For Google, request a refresh token
+          prompt: 'consent'       // Force consent screen to ensure refresh token
+        }
       }
     });
     
@@ -105,7 +154,15 @@ export const auth = {
   // Sign out
   signOut: async () => {
     console.log('Signing out');
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: 'global' }); // Sign out from all devices
+    
+    // Clear any stored session data
+    localStorage.removeItem('supabase_session');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_authenticated');
+    localStorage.removeItem('user_id');
+    
     console.log('Sign out result:', { error: error?.message });
     if (error) throw error;
   },
@@ -114,7 +171,7 @@ export const auth = {
   resetPassword: async (email) => {
     console.log('Resetting password for email:', email);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/Dashboard`
+      redirectTo: `${window.location.origin}/reset-password`
     });
     
     console.log('Reset password result:', { error: error?.message });
@@ -153,6 +210,18 @@ export const auth = {
     
     authStateChangeListener = supabase.auth.onAuthStateChange((event, session) => {
       console.log('Auth state changed:', { event, hasSession: !!session });
+      
+      // Store session data in localStorage for persistence
+      if (session) {
+        localStorage.setItem('supabase_session', JSON.stringify({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expires_at: session.expires_at
+        }));
+      } else if (event === 'SIGNED_OUT') {
+        localStorage.removeItem('supabase_session');
+      }
+      
       callback(event, session);
     });
     
@@ -171,6 +240,50 @@ export const auth = {
     const isAuth = !!session;
     console.log('Authentication check result:', { isAuthenticated: isAuth });
     return isAuth;
+  },
+  
+  // Restore session from localStorage
+  restoreSession: async () => {
+    console.log('Attempting to restore session from localStorage');
+    try {
+      const storedSession = localStorage.getItem('supabase_session');
+      if (!storedSession) {
+        console.log('No stored session found');
+        return null;
+      }
+      
+      const sessionData = JSON.parse(storedSession);
+      console.log('Found stored session, checking if valid');
+      
+      // Check if expired
+      const expiresAt = sessionData.expires_at * 1000; // Convert to milliseconds
+      const now = Date.now();
+      
+      if (expiresAt <= now) {
+        console.log('Stored session is expired, removing');
+        localStorage.removeItem('supabase_session');
+        return null;
+      }
+      
+      // Try to set the session
+      const { data, error } = await supabase.auth.setSession({
+        access_token: sessionData.access_token,
+        refresh_token: sessionData.refresh_token
+      });
+      
+      if (error) {
+        console.error('Error setting session:', error);
+        localStorage.removeItem('supabase_session');
+        return null;
+      }
+      
+      console.log('Successfully restored session');
+      return data.session;
+    } catch (error) {
+      console.error('Error restoring session:', error);
+      localStorage.removeItem('supabase_session');
+      return null;
+    }
   }
 };
 

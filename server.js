@@ -69,12 +69,38 @@ app.use(express.static(path.join(__dirname, 'dist')));
 // Add logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  
+  // Enhanced logging for auth callback routes
   if (req.url.includes('/auth/callback')) {
-    console.log('Auth callback detected!');
+    console.log('=== AUTH CALLBACK DETECTED ===');
+    console.log('Full URL:', `${req.protocol}://${req.get('host')}${req.originalUrl}`);
     console.log('Query params:', req.query);
     console.log('Headers:', req.headers);
+    
+    // Log hash fragment if it was passed in a special header (for debugging)
+    const hashFragment = req.headers['x-hash-fragment'];
+    if (hashFragment) {
+      console.log('Hash fragment:', hashFragment);
+    }
+    
+    // Modify response to track when it completes
+    const originalEnd = res.end;
+    res.end = function() {
+      console.log(`Auth callback response completed with status: ${res.statusCode}`);
+      return originalEnd.apply(this, arguments);
+    };
   }
+  
   next();
+});
+
+// Special handler for auth callback route
+app.get('/auth/callback', (req, res, next) => {
+  console.log('Processing /auth/callback route');
+  console.log('Query parameters:', req.query);
+  
+  // Just serve the index.html and let the client-side handle it
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // Handle client-side routing - serve index.html for all routes

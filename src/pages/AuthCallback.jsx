@@ -25,10 +25,68 @@ const AuthCallback = () => {
         console.log('AuthCallback: Starting authentication process...');
         setStatus('Getting session from provider...');
         
-        // Log Supabase URL for debugging
-        console.log('Using Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+        // Check if we have a token in the URL hash (from OAuth callback)
+        if (location.hash && location.hash.includes('access_token=')) {
+          console.log('Found access token in URL hash, processing...');
+          
+          // Parse the hash parameters
+          const hashParams = {};
+          const hashParts = location.hash.substring(1).split('&');
+          
+          hashParts.forEach(part => {
+            const [key, value] = part.split('=');
+            hashParams[key] = decodeURIComponent(value);
+          });
+          
+          console.log('Parsed hash parameters:', hashParams);
+          
+          if (hashParams.access_token) {
+            console.log('Setting access token from URL hash');
+            
+            // Set the token for API calls
+            apiClient.setToken(hashParams.access_token);
+            
+            // Store tokens in localStorage
+            localStorage.setItem('auth_token', hashParams.access_token);
+            if (hashParams.refresh_token) {
+              localStorage.setItem('refresh_token', hashParams.refresh_token);
+            }
+            
+            try {
+              // Get user data from Supabase using the token
+              const { data: userData, error: userError } = await supabase.auth.getUser(hashParams.access_token);
+              
+              if (userError) {
+                console.error('Error getting user data with token:', userError);
+                setError(`Error getting user data: ${userError.message}`);
+                return;
+              }
+              
+              if (userData && userData.user) {
+                console.log('User data obtained with token:', userData.user);
+                
+                // Update user in context
+                updateUser(userData.user);
+                
+                // Store user data in localStorage
+                localStorage.setItem('user_authenticated', 'true');
+                localStorage.setItem('user_id', userData.user.id);
+                
+                // Redirect to dashboard
+                setStatus('Authentication successful! Redirecting...');
+                setTimeout(() => {
+                  console.log('Navigating to Dashboard...');
+                  navigate('/Dashboard', { replace: true });
+                }, 500);
+                return;
+              }
+            } catch (tokenError) {
+              console.error('Error processing token from URL hash:', tokenError);
+            }
+          }
+        }
         
-        // First, try to directly exchange the code if it exists in the URL
+        // If direct token handling didn't work, try to exchange the code if it exists in the URL
         if (location.search && location.search.includes('code=')) {
           console.log('Found code in URL, attempting direct exchange...');
           const searchParams = new URLSearchParams(location.search);
@@ -102,112 +160,6 @@ const AuthCallback = () => {
         
         if (!session) {
           console.error('No session found');
-          
-          // Try to exchange the code for a session
-          if (location.hash) {
-            console.log('Trying to exchange hash fragment for session...');
-            try {
-              // The hash contains the access token
-              const hashParams = new URLSearchParams(location.hash.substring(1));
-              const accessToken = hashParams.get('access_token');
-              const refreshToken = hashParams.get('refresh_token');
-              
-              console.log('Hash params:', { 
-                accessToken: accessToken ? 'present' : 'missing', 
-                refreshToken: refreshToken ? 'present' : 'missing' 
-              });
-              
-              if (accessToken) {
-                console.log('Found access token in hash, setting up session...');
-                
-                // Set the token for API calls
-                apiClient.setToken(accessToken);
-                
-                // Store tokens in localStorage
-                localStorage.setItem('auth_token', accessToken);
-                if (refreshToken) {
-                  localStorage.setItem('refresh_token', refreshToken);
-                }
-                
-                // Get user data from Supabase
-                console.log('Getting user data from Supabase with token');
-                const { data: userData } = await supabase.auth.getUser(accessToken);
-                
-                console.log('Supabase getUser response:', userData);
-                
-                if (userData && userData.user) {
-                  console.log('User data obtained from Supabase:', userData.user);
-                  
-                  // Update user in context
-                  updateUser(userData.user);
-                  
-                  // Store user data in localStorage
-                  localStorage.setItem('user_authenticated', 'true');
-                  localStorage.setItem('user_id', userData.user.id);
-                  
-                  // Redirect to dashboard
-                  setStatus('Authentication successful! Redirecting...');
-                  setTimeout(() => {
-                    console.log('Navigating to Dashboard...');
-                    navigate('/Dashboard', { replace: true });
-                  }, 500);
-                  return;
-                } else {
-                  console.error('No user data in Supabase response');
-                }
-              }
-            } catch (hashError) {
-              console.error('Error processing hash params:', hashError);
-            }
-          }
-          
-          // Last resort: Try to use the provider token directly
-          console.log('Checking for provider token in URL...');
-          const urlParams = new URLSearchParams(location.search);
-          const provider = location.pathname.split('/').pop(); // Get provider from URL path
-          const providerToken = urlParams.get('provider_token') || urlParams.get('access_token');
-          
-          if (provider && providerToken) {
-            console.log(`Found provider token for ${provider}, setting up session...`);
-            try {
-              // Try to sign in with the provider token
-              const { data: signInData, error: signInError } = await supabase.auth.signInWithIdToken({
-                provider,
-                token: providerToken
-              });
-              
-              console.log('Sign in with provider token response:', signInData);
-              
-              if (signInError) {
-                console.error('Error signing in with provider token:', signInError);
-              } else if (signInData && signInData.user) {
-                // Update user in context
-                updateUser(signInData.user);
-                
-                // Store user data in localStorage
-                localStorage.setItem('user_authenticated', 'true');
-                localStorage.setItem('user_id', signInData.user.id);
-                
-                // Store tokens in localStorage if available
-                if (signInData.session) {
-                  localStorage.setItem('auth_token', signInData.session.access_token);
-                  localStorage.setItem('refresh_token', signInData.session.refresh_token);
-                }
-                
-                // Redirect to dashboard
-                setStatus('Authentication successful! Redirecting...');
-                setTimeout(() => {
-                  console.log('Navigating to Dashboard...');
-                  navigate('/Dashboard', { replace: true });
-                }, 500);
-                return;
-              }
-            } catch (providerError) {
-              console.error('Error processing provider token:', providerError);
-            }
-          }
-          
-          // If we get here, authentication failed
           setError('No valid session found. Please try logging in again.');
           return;
         }
@@ -223,7 +175,7 @@ const AuthCallback = () => {
         localStorage.setItem('auth_token', token);
         localStorage.setItem('refresh_token', session.refresh_token);
         
-        // Get user data directly from Supabase instead of backend
+        // Get user data directly from Supabase
         try {
           const { data: userData, error: userError } = await supabase.auth.getUser(token);
           

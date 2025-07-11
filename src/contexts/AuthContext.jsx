@@ -15,6 +15,7 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   // Function to fetch and merge user profile data
   const fetchUserWithProfile = async (authUser) => {
@@ -41,6 +42,33 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Check for a Supabase session directly
+  const checkSupabaseSession = async () => {
+    try {
+      console.log('Checking for Supabase session...');
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('Error getting Supabase session:', error);
+        return null;
+      }
+      
+      if (data?.session) {
+        console.log('Found valid Supabase session:', { 
+          userId: data.session.user.id,
+          expiresAt: new Date(data.session.expires_at * 1000).toISOString()
+        });
+        return data.session;
+      } else {
+        console.log('No valid Supabase session found');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error checking Supabase session:', error);
+      return null;
+    }
+  };
+
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
@@ -50,19 +78,120 @@ export const AuthProvider = ({ children }) => {
         const token = localStorage.getItem('auth_token');
         const refreshToken = localStorage.getItem('refresh_token');
         const userAuthenticated = localStorage.getItem('user_authenticated');
+        const supabaseSessionData = localStorage.getItem('supabase_session');
         
         console.log('Auth state from localStorage:', { 
           hasToken: !!token, 
           hasRefreshToken: !!refreshToken,
-          userAuthenticated
+          userAuthenticated,
+          hasSupabaseSession: !!supabaseSessionData
         });
+
+        // First, try to restore the Supabase session
+        let supabaseSession = null;
+        if (supabaseSessionData) {
+          try {
+            const parsedSession = JSON.parse(supabaseSessionData);
+            console.log('Found Supabase session in localStorage, attempting to restore');
+            
+            // Check if session is expired
+            const expiresAt = parsedSession.expires_at * 1000; // Convert to milliseconds
+            const now = Date.now();
+            
+            if (expiresAt <= now) {
+              console.log('Stored Supabase session is expired');
+            } else {
+              // Try to set the session in Supabase
+              const { data, error } = await supabase.auth.setSession({
+                access_token: parsedSession.access_token,
+                refresh_token: parsedSession.refresh_token
+              });
+              
+              if (error) {
+                console.error('Error setting Supabase session:', error);
+              } else if (data?.session) {
+                console.log('Successfully restored Supabase session');
+                supabaseSession = data.session;
+              }
+            }
+          } catch (error) {
+            console.error('Error parsing or restoring Supabase session:', error);
+          }
+        }
+
+        // If we have a Supabase session, use it
+        if (supabaseSession) {
+          console.log('Using restored Supabase session');
+          apiClient.setToken(supabaseSession.access_token);
+          
+          // Get user data
+          const { data: userData, error: userError } = await supabase.auth.getUser();
+          
+          if (userError) {
+            console.error('Error getting user data from restored session:', userError);
+            setAuthError('Failed to get user data');
+          } else if (userData?.user) {
+            console.log('Got user data from restored session:', userData.user.id);
+            const userWithProfile = await fetchUserWithProfile(userData.user);
+            setUser(userWithProfile);
+            
+            // Update localStorage
+            localStorage.setItem('auth_token', supabaseSession.access_token);
+            localStorage.setItem('refresh_token', supabaseSession.refresh_token);
+            localStorage.setItem('user_authenticated', 'true');
+            localStorage.setItem('user_id', userData.user.id);
+            
+            console.log('Authentication restored from Supabase session');
+            setLoading(false);
+            return;
+          }
+        }
         
+        // If no Supabase session or it failed, try to get a new session from Supabase
+        if (!supabaseSession) {
+          console.log('No restored session, checking for current Supabase session');
+          const currentSession = await checkSupabaseSession();
+          
+          if (currentSession) {
+            console.log('Found current Supabase session, using it');
+            apiClient.setToken(currentSession.access_token);
+            
+            // Store tokens in localStorage
+            localStorage.setItem('auth_token', currentSession.access_token);
+            localStorage.setItem('refresh_token', currentSession.refresh_token);
+            localStorage.setItem('user_authenticated', 'true');
+            localStorage.setItem('user_id', currentSession.user.id);
+            localStorage.setItem('supabase_session', JSON.stringify({
+              access_token: currentSession.access_token,
+              refresh_token: currentSession.refresh_token,
+              expires_at: currentSession.expires_at
+            }));
+            
+            // Get user data
+            const { data: userData, error: userError } = await supabase.auth.getUser();
+            
+            if (userError) {
+              console.error('Error getting user data from current session:', userError);
+              setAuthError('Failed to get user data');
+            } else if (userData?.user) {
+              console.log('Got user data from current session:', userData.user.id);
+              const userWithProfile = await fetchUserWithProfile(userData.user);
+              setUser(userWithProfile);
+              
+              console.log('Authentication established from current Supabase session');
+              setLoading(false);
+              return;
+            }
+          }
+        }
+        
+        // If we still don't have a session, try the API token approach
         if (token) {
           apiClient.setToken(token);
           
           try {
             // Try to get current user from backend
-            console.log('Attempting to get current user with token');
+            console.log('Attempting to get current user with API token');
             const userData = await apiClient.getCurrentUser();
             const userWithProfile = await fetchUserWithProfile(userData.user);
             console.log('Successfully retrieved user data:', userWithProfile);
@@ -72,8 +201,10 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('user_authenticated', 'true');
             localStorage.setItem('user_id', userData.user.id);
             console.log('Updated authentication state in localStorage');
+            setLoading(false);
+            return;
           } catch (error) {
-            console.error('Error getting current user:', error);
+            console.error('Error getting current user with API token:', error);
             
             // Try to refresh the token if we have a refresh token
             if (refreshToken) {
@@ -92,6 +223,8 @@ export const AuthProvider = ({ children }) => {
                   localStorage.setItem('user_authenticated', 'true');
                   localStorage.setItem('user_id', userData.user.id);
                   console.log('Updated authentication state after token refresh');
+                  setLoading(false);
+                  return;
                 } else {
                   // Refresh failed, clear auth data
                   console.log('Token refresh failed, clearing auth data');
@@ -107,38 +240,13 @@ export const AuthProvider = ({ children }) => {
               clearAuthData();
             }
           }
-        } else if (userAuthenticated === 'true') {
-          // If we have user_authenticated but no token, try to get a session from Supabase
-          console.log('User marked as authenticated but no token, checking with Supabase');
-          try {
-            const { data } = await supabase.auth.getSession();
-            if (data?.session) {
-              console.log('Found valid Supabase session');
-              const token = data.session.access_token;
-              apiClient.setToken(token);
-              localStorage.setItem('auth_token', token);
-              localStorage.setItem('refresh_token', data.session.refresh_token);
-              
-              const { data: userData } = await supabase.auth.getUser();
-              if (userData?.user) {
-                const userWithProfile = await fetchUserWithProfile(userData.user);
-                setUser(userWithProfile);
-                console.log('Restored user session from Supabase');
-              }
-            } else {
-              console.log('No valid Supabase session found, clearing auth data');
-              clearAuthData();
-            }
-          } catch (error) {
-            console.error('Error checking Supabase session:', error);
-            clearAuthData();
-          }
         } else {
           console.log('No authentication data found, user is not logged in');
           clearAuthData();
         }
       } catch (error) {
         console.error('Error getting initial session:', error);
+        setAuthError(error.message);
         clearAuthData();
       } finally {
         setLoading(false);
@@ -152,10 +260,66 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user_authenticated');
       localStorage.removeItem('user_id');
+      localStorage.removeItem('supabase_session');
       setUser(null);
     };
 
     getInitialSession();
+    
+    // Set up auth state change listener for Supabase
+    const unsubscribe = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Supabase auth state changed:', { event, hasSession: !!session });
+      
+      if (event === 'SIGNED_IN' && session) {
+        console.log('User signed in via Supabase, updating state');
+        const token = session.access_token;
+        apiClient.setToken(token);
+        
+        // Store tokens in localStorage
+        localStorage.setItem('auth_token', token);
+        localStorage.setItem('refresh_token', session.refresh_token);
+        localStorage.setItem('user_authenticated', 'true');
+        localStorage.setItem('user_id', session.user.id);
+        
+        // Store Supabase session data
+        localStorage.setItem('supabase_session', JSON.stringify({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expires_at: session.expires_at
+        }));
+        
+        // Get user data and update state
+        fetchUserWithProfile(session.user).then(userWithProfile => {
+          setUser(userWithProfile);
+        });
+      } else if (event === 'SIGNED_OUT') {
+        console.log('User signed out via Supabase, clearing state');
+        clearAuthData();
+      } else if (event === 'TOKEN_REFRESHED' && session) {
+        console.log('Token refreshed via Supabase, updating tokens');
+        apiClient.setToken(session.access_token);
+        
+        // Update stored tokens
+        localStorage.setItem('auth_token', session.access_token);
+        localStorage.setItem('refresh_token', session.refresh_token);
+        
+        // Update stored session
+        localStorage.setItem('supabase_session', JSON.stringify({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expires_at: session.expires_at
+        }));
+      } else if (event === 'USER_UPDATED' && session) {
+        console.log('User data updated via Supabase, refreshing user data');
+        fetchUserWithProfile(session.user).then(userWithProfile => {
+          setUser(userWithProfile);
+        });
+      }
+    });
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const signIn = async (credentials) => {
@@ -204,6 +368,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user_authenticated');
     localStorage.removeItem('user_id');
+    localStorage.removeItem('supabase_session');
     setUser(null);
   };
 
@@ -211,23 +376,31 @@ export const AuthProvider = ({ children }) => {
     try {
       console.log(`Initiating OAuth sign-in with provider: ${provider}`);
       
-      // For OAuth, we'll need to implement this through the backend
-      const backendUrl = import.meta.env.VITE_API_URL || 'https://api.lucysounds.com/api';
+      // Use Supabase's OAuth directly
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          skipBrowserRedirect: false,
+          queryParams: {
+            access_type: 'offline', // For Google, request a refresh token
+            prompt: 'consent'       // Force consent screen to ensure refresh token
+          }
+        }
+      });
       
-      // Store the current URL as the intended return URL
-      const returnUrl = window.location.href;
-      localStorage.setItem('auth_return_url', returnUrl);
-      
-      // Special handling for Solana wallet
-      if (provider === 'solana') {
-        console.log('Initiating Solana wallet authentication');
-        // Redirect to Solana wallet auth endpoint
-        window.location.href = `${backendUrl}/auth/wallet/solana`;
-        return;
+      if (error) {
+        console.error(`OAuth sign-in error with provider ${provider}:`, error);
+        throw error;
       }
       
-      // Standard OAuth providers
-      window.location.href = `${backendUrl}/auth/${provider}`;
+      if (data.url) {
+        // Redirect to the OAuth provider's authorization page
+        window.location.href = data.url;
+      } else {
+        console.error('No redirect URL returned from Supabase OAuth');
+        throw new Error('OAuth initialization failed');
+      }
     } catch (error) {
       console.error(`OAuth sign-in error with provider ${provider}:`, error);
       throw error;
@@ -242,6 +415,7 @@ export const AuthProvider = ({ children }) => {
     signOut,
     signInWithOAuth,
     isAuthenticated: !!user,
+    authError,
     updateUser: setUser, // Add function to update user data
     apiClient, // Expose API client for other components to use
   };

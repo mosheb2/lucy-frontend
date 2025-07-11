@@ -68,7 +68,14 @@ const AuthCallback = () => {
           search: location.search,
           pathname: location.pathname,
           origin: window.location.origin,
-          fullUrl: window.location.href
+          fullUrl: window.location.href,
+          localStorage: {
+            auth_token: !!localStorage.getItem('auth_token'),
+            refresh_token: !!localStorage.getItem('refresh_token'),
+            user_authenticated: localStorage.getItem('user_authenticated'),
+            user_id: localStorage.getItem('user_id'),
+            supabase_session: !!localStorage.getItem('supabase_session')
+          }
         };
         setDebugInfo(debug);
         console.log('Auth callback debug info:', debug);
@@ -85,6 +92,16 @@ const AuthCallback = () => {
             
             // After code exchange, check if we have a session
             const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+            
+            console.log('Session after code exchange:', { 
+              hasSession: !!sessionData?.session, 
+              error: sessionError?.message,
+              session: sessionData?.session ? {
+                accessToken: !!sessionData.session.access_token,
+                refreshToken: !!sessionData.session.refresh_token,
+                expiresAt: sessionData.session.expires_at
+              } : null
+            });
             
             if (sessionError) {
               console.error('Error getting session after code exchange:', sessionError);
@@ -116,6 +133,12 @@ const AuthCallback = () => {
             // Get user data
             const { data: userData, error: userError } = await supabase.auth.getUser();
             
+            console.log('User data after code exchange:', {
+              hasUser: !!userData?.user,
+              error: userError?.message,
+              userId: userData?.user?.id
+            });
+            
             if (userError) {
               console.error('Error getting user data after code exchange:', userError);
               setError(`Error getting user data: ${userError.message}`);
@@ -137,12 +160,24 @@ const AuthCallback = () => {
             localStorage.setItem('user_authenticated', 'true');
             localStorage.setItem('user_id', userData.user.id);
             
+            // Check localStorage to verify everything is set correctly
+            console.log('LocalStorage state before redirect:', {
+              auth_token: !!localStorage.getItem('auth_token'),
+              refresh_token: !!localStorage.getItem('refresh_token'),
+              user_authenticated: localStorage.getItem('user_authenticated'),
+              user_id: localStorage.getItem('user_id'),
+              supabase_session: !!localStorage.getItem('supabase_session')
+            });
+            
             // Redirect to dashboard
             setStatus('Authentication successful! Redirecting...');
+            
+            // Use a direct window.location for a hard redirect
+            console.log('Redirecting to Dashboard with hard navigation...');
             setTimeout(() => {
-              console.log('Navigating to Dashboard...');
-              navigate('/Dashboard', { replace: true });
+              window.location.href = '/Dashboard';
             }, 500);
+            
             return;
           } catch (exchangeError) {
             console.error('Error in code exchange process:', exchangeError);

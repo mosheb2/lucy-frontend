@@ -236,25 +236,3 @@ export default function LoginPage() {
     </div>
   );
 } 
-              </div>
-            </form>
-            
-            <div className="mt-6 text-center">
-              <p className="text-sm text-slate-600">
-                Don't have an account?{' '}
-                <Button
-                  variant="link"
-                  className="text-purple-600 hover:text-purple-700 p-0 h-auto font-semibold"
-                  onClick={handleSignupClick}
-                  disabled={isLoading}
-                >
-                  Create an account
-                </Button>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-} 

@@ -45,51 +45,11 @@ export const AuthProvider = ({ children }) => {
     // Get initial session
     const getInitialSession = async () => {
       try {
-        console.log('AuthContext: Checking for existing session...');
-        
-        // First try to get session from Supabase directly
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.error('Error getting Supabase session:', sessionError);
-        } else if (sessionData && sessionData.session) {
-          console.log('Found existing Supabase session');
-          const token = sessionData.session.access_token;
-          
-          // Set the token for API calls
-          apiClient.setToken(token);
-          
-          // Store tokens in localStorage
-          localStorage.setItem('auth_token', token);
-          localStorage.setItem('refresh_token', sessionData.session.refresh_token);
-          
-          // Get user data
-          const { data: userData, error: userError } = await supabase.auth.getUser(token);
-          
-          if (userError) {
-            console.error('Error getting user data from Supabase:', userError);
-          } else if (userData && userData.user) {
-            console.log('User data obtained from Supabase:', userData.user);
-            
-            // Update user in context
-            const userWithProfile = await fetchUserWithProfile(userData.user);
-            setUser(userWithProfile);
-            
-            // Store user data in localStorage
-            localStorage.setItem('user_authenticated', 'true');
-            localStorage.setItem('user_id', userData.user.id);
-            
-            setLoading(false);
-            return;
-          }
-        }
-        
-        // If no Supabase session, check if we have a token in localStorage
+        // Check if we have a token in localStorage
         const token = localStorage.getItem('auth_token');
         const refreshToken = localStorage.getItem('refresh_token');
         
         if (token) {
-          console.log('Found token in localStorage, validating...');
           apiClient.setToken(token);
           
           try {
@@ -209,6 +169,9 @@ export const AuthProvider = ({ children }) => {
     try {
       console.log(`Initiating OAuth sign-in with provider: ${provider}`);
       
+      // For OAuth, we'll need to implement this through the backend
+      const backendUrl = import.meta.env.VITE_API_URL || 'https://lucy-backend.herokuapp.com/api';
+      
       // Store the current URL as the intended return URL
       const returnUrl = window.location.href;
       localStorage.setItem('auth_return_url', returnUrl);
@@ -217,30 +180,12 @@ export const AuthProvider = ({ children }) => {
       if (provider === 'solana') {
         console.log('Initiating Solana wallet authentication');
         // Redirect to Solana wallet auth endpoint
-        const backendUrl = import.meta.env.VITE_API_URL || 'https://api.lucysounds.com/api';
         window.location.href = `${backendUrl}/auth/wallet/solana`;
         return;
       }
       
-      // Use Supabase OAuth directly
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
-      });
-      
-      if (error) {
-        console.error(`OAuth sign-in error with provider ${provider}:`, error);
-        throw error;
-      }
-      
-      if (data && data.url) {
-        console.log('Redirecting to OAuth provider URL:', data.url);
-        window.location.href = data.url;
-      } else {
-        throw new Error('No redirect URL received from OAuth provider');
-      }
+      // Standard OAuth providers
+      window.location.href = `${backendUrl}/auth/${provider}`;
     } catch (error) {
       console.error(`OAuth sign-in error with provider ${provider}:`, error);
       throw error;

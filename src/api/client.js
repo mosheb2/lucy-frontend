@@ -1,5 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.lucysounds.com/api';
-const BACKEND_URL = 'https://api.lucysounds.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://lucy-backend.herokuapp.com/api';
+const BACKEND_URL = 'https://lucy-backend.herokuapp.com/api';
 
 console.log('API client initialized with base URL:', API_BASE_URL);
 
@@ -7,6 +7,9 @@ class ApiClient {
   constructor() {
     this.baseURL = API_BASE_URL;
     this.token = localStorage.getItem('auth_token');
+    
+    // Log initial token state
+    console.log('API client initialized with token:', this.token ? 'present' : 'null');
   }
 
   setToken(token) {
@@ -42,11 +45,15 @@ class ApiClient {
       headers: this.getHeaders(),
       ...options,
       mode: 'cors',
+      credentials: 'include' // Include cookies if any
     };
 
     try {
       console.log(`Making API request to ${url}`);
       const response = await fetch(url, config);
+      
+      // Log response status
+      console.log(`API response status: ${response.status}`);
       
       // Handle 401 Unauthorized errors by attempting to refresh the token
       if (response.status === 401) {
@@ -80,11 +87,23 @@ class ApiClient {
       }
       
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Network error' }));
-        throw new Error(error.error || `HTTP ${response.status}`);
+        // Try to parse error message from response
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+        } catch (parseError) {
+          // If we can't parse JSON, use status text
+          throw new Error(`HTTP ${response.status} ${response.statusText}`);
+        }
       }
       
-      return await response.json();
+      // For successful responses, try to parse JSON
+      try {
+        return await response.json();
+      } catch (parseError) {
+        console.warn('Response is not valid JSON:', parseError);
+        return { success: true };
+      }
     } catch (error) {
       // Don't log authentication errors as they're expected
       if (!error.message.includes('401') && !error.message.includes('No token provided')) {
@@ -192,6 +211,10 @@ class ApiClient {
   async getCurrentUser() {
     console.log('Getting current user, token available:', !!this.token);
     
+    if (!this.token) {
+      throw new Error('No authentication token available');
+    }
+    
     try {
       // First try with Supabase directly
       const { supabase } = await import('@/api/supabase-auth');
@@ -207,7 +230,9 @@ class ApiClient {
         console.log('User data obtained from Supabase:', userData.user);
         return { user: userData.user };
       } else {
-        throw new Error('No user data found in Supabase response');
+        console.log('No user data in Supabase response');
+        // Fall back to backend API
+        return await this.request('/auth/me');
       }
     } catch (error) {
       // If it's a 401 error, the user is not authenticated
@@ -223,6 +248,10 @@ class ApiClient {
 
   async refreshToken(refreshToken) {
     console.log('Attempting to refresh token');
+    
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
     
     try {
       // First try with Supabase directly

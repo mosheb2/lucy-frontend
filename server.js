@@ -7,14 +7,30 @@ const PORT = process.env.PORT || 3000;
 // Serve static files from the dist directory
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Add logging middleware
+// Add detailed logging middleware
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-  if (req.url.includes('/auth/callback')) {
-    console.log('Auth callback detected!');
+  const timestamp = new Date().toISOString();
+  console.log(`${timestamp} - ${req.method} ${req.url}`);
+  
+  // Log headers for auth-related requests
+  if (req.url.includes('/auth/callback') || req.url.includes('/login') || req.url.includes('/api/auth')) {
+    console.log('Auth-related request detected!');
     console.log('Query params:', req.query);
     console.log('Headers:', req.headers);
+    
+    // Add CORS headers for auth callbacks
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
+  
+  // Log response
+  const originalSend = res.send;
+  res.send = function(body) {
+    console.log(`${timestamp} - Response status: ${res.statusCode}`);
+    return originalSend.call(this, body);
+  };
+  
   next();
 });
 
@@ -25,4 +41,5 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  console.log(`Frontend URL: http://localhost:${PORT}`);
 });

@@ -4,6 +4,43 @@ import { supabase } from '@/api/supabase-auth';
 import { useAuth } from '@/contexts/AuthContext';
 import apiClient from '@/api/client';
 
+// Helper function to extract tokens from URL hash
+const extractTokensFromHash = (hash) => {
+  if (!hash) return {};
+  
+  // Remove the leading '#' if present
+  const hashString = hash.startsWith('#') ? hash.substring(1) : hash;
+  
+  // Try URLSearchParams first
+  try {
+    const params = new URLSearchParams(hashString);
+    return {
+      accessToken: params.get('access_token'),
+      refreshToken: params.get('refresh_token'),
+      expiresAt: params.get('expires_at'),
+      expiresIn: params.get('expires_in'),
+      tokenType: params.get('token_type'),
+      providerToken: params.get('provider_token')
+    };
+  } catch (error) {
+    console.error('Error parsing hash with URLSearchParams:', error);
+    
+    // Fallback to manual parsing
+    const tokens = {};
+    const parts = hashString.split('&');
+    for (const part of parts) {
+      const [key, value] = part.split('=');
+      if (key === 'access_token') tokens.accessToken = value;
+      if (key === 'refresh_token') tokens.refreshToken = value;
+      if (key === 'expires_at') tokens.expiresAt = value;
+      if (key === 'expires_in') tokens.expiresIn = value;
+      if (key === 'token_type') tokens.tokenType = value;
+      if (key === 'provider_token') tokens.providerToken = value;
+    }
+    return tokens;
+  }
+};
+
 const AuthCallback = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -32,6 +69,82 @@ const AuthCallback = () => {
           pathname: location.pathname
         };
         setDebugInfo(debug);
+        
+        // Extract tokens directly from hash using our helper function
+        if (location.hash) {
+          console.log('Extracting tokens from hash...');
+          const tokens = extractTokensFromHash(location.hash);
+          console.log('Extracted tokens:', { 
+            hasAccessToken: !!tokens.accessToken,
+            hasRefreshToken: !!tokens.refreshToken,
+            tokenType: tokens.tokenType
+          });
+          
+          if (tokens.accessToken) {
+            console.log('Found access token in hash, setting up session...');
+            
+            // Set the token for API calls
+            apiClient.setToken(tokens.accessToken);
+            
+            // Store tokens in localStorage
+            localStorage.setItem('auth_token', tokens.accessToken);
+            if (tokens.refreshToken) {
+              localStorage.setItem('refresh_token', tokens.refreshToken);
+            }
+            
+            // Try to get user data with the token
+            try {
+              // First try with Supabase
+              const { data: userData, error: userError } = await supabase.auth.getUser(tokens.accessToken);
+              
+              if (!userError && userData?.user) {
+                console.log('User data obtained from Supabase:', userData.user);
+                
+                // Update user in context
+                updateUser(userData.user);
+                
+                // Store user data in localStorage
+                localStorage.setItem('user_authenticated', 'true');
+                localStorage.setItem('user_id', userData.user.id);
+                
+                // Redirect to dashboard
+                setStatus('Authentication successful! Redirecting...');
+                setTimeout(() => {
+                  navigate('/Dashboard', { replace: true });
+                }, 500);
+                return;
+              } else {
+                console.error('Error getting user with token from Supabase:', userError);
+                // If Supabase fails, try with backend API
+                try {
+                  const apiUserData = await apiClient.getCurrentUser();
+                  
+                  if (apiUserData && apiUserData.user) {
+                    console.log('User data obtained from API:', apiUserData.user);
+                    
+                    // Update user in context
+                    updateUser(apiUserData.user);
+                    
+                    // Store user data in localStorage
+                    localStorage.setItem('user_authenticated', 'true');
+                    localStorage.setItem('user_id', apiUserData.user.id);
+                    
+                    // Redirect to dashboard
+                    setStatus('Authentication successful! Redirecting...');
+                    setTimeout(() => {
+                      navigate('/Dashboard', { replace: true });
+                    }, 500);
+                    return;
+                  }
+                } catch (apiError) {
+                  console.error('Error getting user data from API:', apiError);
+                }
+              }
+            } catch (userError) {
+              console.error('Error getting user data with token:', userError);
+            }
+          }
+        }
         
         // First, try to directly exchange the code if it exists in the URL
         if (location.search && location.search.includes('code=')) {
@@ -271,6 +384,34 @@ const AuthCallback = () => {
     handleCallback();
   }, [navigate, location, updateUser]);
 
+  // Add a manual login function for debugging
+  const handleManualLogin = () => {
+    try {
+      // Parse the token from the debug info
+      const hash = debugInfo.hash || '';
+      const tokens = extractTokensFromHash(hash);
+      
+      if (tokens.accessToken) {
+        // Set the token for API calls
+        apiClient.setToken(tokens.accessToken);
+        
+        // Store tokens in localStorage
+        localStorage.setItem('auth_token', tokens.accessToken);
+        if (tokens.refreshToken) {
+          localStorage.setItem('refresh_token', tokens.refreshToken);
+        }
+        
+        // Redirect to dashboard
+        navigate('/Dashboard', { replace: true });
+      } else {
+        setError('No access token found in debug info');
+      }
+    } catch (error) {
+      console.error('Manual login error:', error);
+      setError(`Manual login error: ${error.message}`);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-50 via-white to-indigo-50 p-4">
       <div className="w-full max-w-md text-center">
@@ -292,12 +433,21 @@ const AuthCallback = () => {
         ) : (
           <>
             <p className="text-red-500 mb-6">{error}</p>
-            <button
-              onClick={() => navigate('/Login', { replace: true })}
-              className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-lg shadow hover:shadow-lg transition-all duration-300"
-            >
-              Return to Login
-            </button>
+            <div className="flex space-x-4 justify-center">
+              <button
+                onClick={() => navigate('/Login', { replace: true })}
+                className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-lg shadow hover:shadow-lg transition-all duration-300"
+              >
+                Return to Login
+              </button>
+              
+              <button
+                onClick={handleManualLogin}
+                className="px-6 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white font-medium rounded-lg shadow hover:shadow-lg transition-all duration-300"
+              >
+                Try Manual Login
+              </button>
+            </div>
             
             {/* Debug information for development */}
             <div className="mt-6 text-xs text-left bg-gray-100 p-4 rounded-md overflow-auto max-h-40">

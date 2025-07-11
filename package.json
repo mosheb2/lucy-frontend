@@ -2,6 +2,7 @@
   "name": "lucy-frontend",
   "version": "1.0.0",
   "description": "Lucy Sounds Frontend",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "node setup-env.js && vite build",

@@ -30,6 +30,7 @@ import { BrowserRouter as Router, Route, Routes, useLocation, Navigate } from 'r
 import Login from './Login';
 import Signup from './Signup';
 import ConnectWallet from './ConnectWallet';
+import RequireAuth from './RequireAuth';
 import { useAuth } from '@/contexts/AuthContext';
 
 const PAGES = {
@@ -117,26 +118,6 @@ function PagesContent() {
             </Routes>
         </Layout>
     );
-}
-
-function RequireAuth({ children }) {
-  const { isAuthenticated, loading } = useAuth();
-  const isAuthRoute = ['/login', '/signup'].includes(window.location.pathname.toLowerCase());
-  
-  // Show loading while checking authentication
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600"></div>
-      </div>
-    );
-  }
-  
-  if (!isAuthenticated && !isAuthRoute) {
-    return <Navigate to="/login" replace />;
-  }
-  
-  return children;
 }
 
 export default function Pages() {

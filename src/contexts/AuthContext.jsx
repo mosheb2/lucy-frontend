@@ -45,22 +45,33 @@ export const AuthProvider = ({ children }) => {
     // Get initial session
     const getInitialSession = async () => {
       try {
+        console.log('Getting initial session...');
         // Check if we have a token in localStorage
         const token = localStorage.getItem('auth_token');
         const refreshToken = localStorage.getItem('refresh_token');
+        const userAuthenticated = localStorage.getItem('user_authenticated');
+        
+        console.log('Auth state from localStorage:', { 
+          hasToken: !!token, 
+          hasRefreshToken: !!refreshToken,
+          userAuthenticated
+        });
         
         if (token) {
           apiClient.setToken(token);
           
           try {
             // Try to get current user from backend
+            console.log('Attempting to get current user with token');
             const userData = await apiClient.getCurrentUser();
             const userWithProfile = await fetchUserWithProfile(userData.user);
+            console.log('Successfully retrieved user data:', userWithProfile);
             setUser(userWithProfile);
             
             // Update localStorage
             localStorage.setItem('user_authenticated', 'true');
             localStorage.setItem('user_id', userData.user.id);
+            console.log('Updated authentication state in localStorage');
           } catch (error) {
             console.error('Error getting current user:', error);
             
@@ -72,6 +83,7 @@ export const AuthProvider = ({ children }) => {
                 
                 if (refreshResponse && refreshResponse.session?.access_token) {
                   // Successfully refreshed, try to get user again
+                  console.log('Token refreshed successfully, getting user data');
                   const userData = await apiClient.getCurrentUser();
                   const userWithProfile = await fetchUserWithProfile(userData.user);
                   setUser(userWithProfile);
@@ -79,8 +91,10 @@ export const AuthProvider = ({ children }) => {
                   // Update localStorage
                   localStorage.setItem('user_authenticated', 'true');
                   localStorage.setItem('user_id', userData.user.id);
+                  console.log('Updated authentication state after token refresh');
                 } else {
                   // Refresh failed, clear auth data
+                  console.log('Token refresh failed, clearing auth data');
                   clearAuthData();
                 }
               } catch (refreshError) {
@@ -89,10 +103,38 @@ export const AuthProvider = ({ children }) => {
               }
             } else {
               // No refresh token, clear auth data
+              console.log('No refresh token available, clearing auth data');
               clearAuthData();
             }
           }
+        } else if (userAuthenticated === 'true') {
+          // If we have user_authenticated but no token, try to get a session from Supabase
+          console.log('User marked as authenticated but no token, checking with Supabase');
+          try {
+            const { data } = await supabase.auth.getSession();
+            if (data?.session) {
+              console.log('Found valid Supabase session');
+              const token = data.session.access_token;
+              apiClient.setToken(token);
+              localStorage.setItem('auth_token', token);
+              localStorage.setItem('refresh_token', data.session.refresh_token);
+              
+              const { data: userData } = await supabase.auth.getUser();
+              if (userData?.user) {
+                const userWithProfile = await fetchUserWithProfile(userData.user);
+                setUser(userWithProfile);
+                console.log('Restored user session from Supabase');
+              }
+            } else {
+              console.log('No valid Supabase session found, clearing auth data');
+              clearAuthData();
+            }
+          } catch (error) {
+            console.error('Error checking Supabase session:', error);
+            clearAuthData();
+          }
         } else {
+          console.log('No authentication data found, user is not logged in');
           clearAuthData();
         }
       } catch (error) {

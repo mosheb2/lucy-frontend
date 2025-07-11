@@ -185,15 +185,21 @@ const AuthCallback = () => {
                     // Update user in context
                     updateUser(apiUserData.user);
                     
-                    // Store user data in localStorage
+                    // Store user data in localStorage with more explicit logging
+                    console.log('Setting authentication data in localStorage');
                     localStorage.setItem('user_authenticated', 'true');
                     localStorage.setItem('user_id', apiUserData.user.id);
                     
-                    // Redirect to dashboard
+                    // Redirect to dashboard with explicit logging
                     setStatus('Authentication successful! Redirecting...');
+                    console.log('Authentication successful, redirecting to Dashboard...');
+                    
+                    // Add a small delay to ensure localStorage is updated before navigation
                     setTimeout(() => {
-                      navigate('/Dashboard', { replace: true });
-                    }, 500);
+                      console.log('Executing navigation to Dashboard...');
+                      // Force a hard navigation to ensure full page reload with new auth state
+                      window.location.href = '/Dashboard';
+                    }, 1000);
                     return;
                   }
                 } catch (apiError) {
@@ -259,6 +265,8 @@ const AuthCallback = () => {
           // Update user in context
           updateUser(userData.user);
           
+          // Store user data in localStorage with explicit logging
+          console.log('Setting authentication data in localStorage');
           // Store user data in localStorage
           localStorage.setItem('user_authenticated', 'true');
           localStorage.setItem('user_id', userData.user.id);

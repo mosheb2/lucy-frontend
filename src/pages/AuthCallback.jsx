@@ -12,13 +12,82 @@ const AuthCallback = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    // Add a console log to show this component is mounted
+    console.log('AuthCallback component mounted', { 
+      hash: location.hash,
+      search: location.search,
+      pathname: location.pathname
+    });
+    
     const handleCallback = async () => {
       try {
         console.log('Handling OAuth callback...', location.hash, location.search);
         console.log('AuthCallback: Starting authentication process...');
         setStatus('Getting session from provider...');
         
-        // Get the session from Supabase
+        // Log Supabase URL for debugging
+        console.log('Using Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+        
+        // First, try to directly exchange the code if it exists in the URL
+        if (location.search && location.search.includes('code=')) {
+          console.log('Found code in URL, attempting direct exchange...');
+          const searchParams = new URLSearchParams(location.search);
+          const code = searchParams.get('code');
+          
+          if (code) {
+            console.log('Exchanging code for session...');
+            try {
+              const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+              
+              console.log('Code exchange response:', data);
+              
+              if (exchangeError) {
+                console.error('Error exchanging code for session:', exchangeError);
+                setError(`Error exchanging code: ${exchangeError.message}`);
+                return;
+              }
+              
+              if (data && data.session) {
+                console.log('Session obtained from code exchange:', data.session);
+                
+                // Set the token for API calls
+                const token = data.session.access_token;
+                apiClient.setToken(token);
+                
+                // Store tokens in localStorage
+                localStorage.setItem('auth_token', token);
+                localStorage.setItem('refresh_token', data.session.refresh_token);
+                
+                // Get user data
+                const userData = data.user;
+                
+                if (userData) {
+                  console.log('User data obtained from code exchange:', userData);
+                  
+                  // Update user in context
+                  updateUser(userData);
+                  
+                  // Store user data in localStorage
+                  localStorage.setItem('user_authenticated', 'true');
+                  localStorage.setItem('user_id', userData.id);
+                  
+                  // Redirect to dashboard
+                  setStatus('Authentication successful! Redirecting...');
+                  setTimeout(() => {
+                    console.log('Navigating to Dashboard...');
+                    navigate('/Dashboard', { replace: true });
+                  }, 500);
+                  return;
+                }
+              }
+            } catch (exchangeError) {
+              console.error('Error in code exchange process:', exchangeError);
+            }
+          }
+        }
+        
+        // If direct code exchange didn't work, try getting the session
+        console.log('Trying to get existing session...');
         const { data, error: sessionError } = await supabase.auth.getSession();
         
         console.log('Supabase session response:', data);
@@ -90,64 +159,56 @@ const AuthCallback = () => {
             } catch (hashError) {
               console.error('Error processing hash params:', hashError);
             }
-          } else if (location.search) {
-            console.log('Checking for code in search params...');
-            const searchParams = new URLSearchParams(location.search);
-            const code = searchParams.get('code');
-            
-            if (code) {
-              console.log('Found code in search params, exchanging for session...');
-              try {
-                const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          }
+          
+          // Last resort: Try to use the provider token directly
+          console.log('Checking for provider token in URL...');
+          const urlParams = new URLSearchParams(location.search);
+          const provider = location.pathname.split('/').pop(); // Get provider from URL path
+          const providerToken = urlParams.get('provider_token') || urlParams.get('access_token');
+          
+          if (provider && providerToken) {
+            console.log(`Found provider token for ${provider}, setting up session...`);
+            try {
+              // Try to sign in with the provider token
+              const { data: signInData, error: signInError } = await supabase.auth.signInWithIdToken({
+                provider,
+                token: providerToken
+              });
+              
+              console.log('Sign in with provider token response:', signInData);
+              
+              if (signInError) {
+                console.error('Error signing in with provider token:', signInError);
+              } else if (signInData && signInData.user) {
+                // Update user in context
+                updateUser(signInData.user);
                 
-                console.log('Code exchange response:', exchangeData);
+                // Store user data in localStorage
+                localStorage.setItem('user_authenticated', 'true');
+                localStorage.setItem('user_id', signInData.user.id);
                 
-                if (exchangeError) {
-                  console.error('Error exchanging code for session:', exchangeError);
-                  setError(`Error exchanging code: ${exchangeError.message}`);
-                  return;
+                // Store tokens in localStorage if available
+                if (signInData.session) {
+                  localStorage.setItem('auth_token', signInData.session.access_token);
+                  localStorage.setItem('refresh_token', signInData.session.refresh_token);
                 }
                 
-                if (exchangeData && exchangeData.session) {
-                  console.log('Session obtained from code exchange');
-                  
-                  // Set the token for API calls
-                  const token = exchangeData.session.access_token;
-                  apiClient.setToken(token);
-                  
-                  // Store tokens in localStorage
-                  localStorage.setItem('auth_token', token);
-                  localStorage.setItem('refresh_token', exchangeData.session.refresh_token);
-                  
-                  // Get user data
-                  const userData = exchangeData.user;
-                  
-                  if (userData) {
-                    console.log('User data obtained from code exchange:', userData);
-                    
-                    // Update user in context
-                    updateUser(userData);
-                    
-                    // Store user data in localStorage
-                    localStorage.setItem('user_authenticated', 'true');
-                    localStorage.setItem('user_id', userData.id);
-                    
-                    // Redirect to dashboard
-                    setStatus('Authentication successful! Redirecting...');
-                    setTimeout(() => {
-                      console.log('Navigating to Dashboard...');
-                      navigate('/Dashboard', { replace: true });
-                    }, 500);
-                    return;
-                  }
-                }
-              } catch (exchangeError) {
-                console.error('Error in code exchange process:', exchangeError);
+                // Redirect to dashboard
+                setStatus('Authentication successful! Redirecting...');
+                setTimeout(() => {
+                  console.log('Navigating to Dashboard...');
+                  navigate('/Dashboard', { replace: true });
+                }, 500);
+                return;
               }
+            } catch (providerError) {
+              console.error('Error processing provider token:', providerError);
             }
           }
           
-          setError('No session found. Please try logging in again.');
+          // If we get here, authentication failed
+          setError('No valid session found. Please try logging in again.');
           return;
         }
         

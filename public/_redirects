@@ -1,6 +1,6 @@
 # Netlify redirects file
-# Redirect auth callback to the standalone HTML handler
-/auth/callback  /auth-callback.html  200
+# Let the React app handle the auth callback
+/auth/callback  /index.html  200
 
 # SPA fallback
 /*  /index.html  200 

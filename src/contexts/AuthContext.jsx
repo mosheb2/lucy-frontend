@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
         console.log('Auth loading timeout reached');
         setLoading(false);
       }
-    }, 10000); // 10 seconds timeout
+    }, 15000); // 15 seconds timeout
 
     // Function to get the current session and user
     const initializeAuth = async () => {
@@ -83,11 +83,19 @@ export const AuthProvider = ({ children }) => {
               console.error('Error getting user after auth change:', error);
             } else if (data?.user) {
               setUser(data.user);
+              // Ensure loading is set to false when user is set
+              setLoading(false);
             }
           }
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
           setSession(null);
+        } else if (event === 'USER_UPDATED') {
+          // Refresh user data when updated
+          const { data, error } = await supabase.auth.getUser();
+          if (!error && data?.user) {
+            setUser(data.user);
+          }
         }
       }
     );

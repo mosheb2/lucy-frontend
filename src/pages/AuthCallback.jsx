@@ -1,19 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/api/supabase-auth-fixed';
 import { Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-
-// Create a standalone Supabase client just for this component
-const supabaseUrl = 'https://bxgdijqjdtbgzycvngug.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.axSb9Ew1TelVzo-4EsbWO8vxYjuU_0FAxWMpbWrgfIw';
-const callbackClient = createClient(supabaseUrl, supabaseAnonKey);
 
 const AuthCallback = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
   const [showDebug, setShowDebug] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Function to handle the OAuth callback
@@ -40,14 +37,12 @@ const AuthCallback = () => {
             return;
           }
 
-          console.log('Found code in URL, attempting direct exchange...');
+          console.log('Found code in URL, exchanging for session...');
           
           try {
-            // Clear any existing auth data
-            localStorage.clear();
-            
-            // Direct code exchange
-            const { data, error: exchangeError } = await callbackClient.auth.exchangeCodeForSession(code);
+            // Let Supabase handle the code exchange
+            // The onAuthStateChange listener in AuthContext will handle the session
+            const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
             
             if (exchangeError) {
               console.error('Error exchanging code:', exchangeError);
@@ -64,15 +59,8 @@ const AuthCallback = () => {
             
             console.log('Successfully exchanged code for session, redirecting...');
             
-            // Store the session manually
-            localStorage.setItem('supabase.auth.token', JSON.stringify({
-              access_token: data.session.access_token,
-              refresh_token: data.session.refresh_token,
-              expires_at: data.session.expires_at
-            }));
-            
-            // Hard redirect to dashboard
-            window.location.replace('/Dashboard');
+            // Navigate to dashboard after successful authentication
+            navigate('/Dashboard', { replace: true });
           } catch (exchangeError) {
             console.error('Exception during code exchange:', exchangeError);
             setError(`Code exchange error: ${exchangeError.message}`);
@@ -96,19 +84,17 @@ const AuthCallback = () => {
         setLoading(false);
         setError('Authentication timed out. Please try again.');
       }
-    }, 10000); // 10 seconds timeout
+    }, 15000); // 15 seconds timeout
 
     handleCallback();
 
     return () => {
       clearTimeout(timeoutId);
     };
-  }, []);
+  }, [navigate]);
 
   const handleReturnToLogin = () => {
-    // Clear all storage and redirect to login
-    localStorage.clear();
-    window.location.replace('/Login');
+    navigate('/Login', { replace: true });
   };
 
   const handleClearAndRetry = () => {

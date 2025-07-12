@@ -2,6 +2,7 @@
   "name": "lucy-frontend",
   "version": "1.0.0",
   "description": "Lucy Sounds Frontend",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "node setup-env.js && vite build",
@@ -43,6 +44,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
+    "cors": "^2.8.5",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.5.2",
     "express": "^4.21.2",

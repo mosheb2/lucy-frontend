@@ -48,6 +48,7 @@ const AuthCallback = () => {
   const [status, setStatus] = useState('Processing authentication...');
   const [error, setError] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
+  const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => {
     // Add a console log to show this component is mounted
@@ -67,66 +68,134 @@ const AuthCallback = () => {
           hash: location.hash,
           search: location.search,
           pathname: location.pathname,
-          origin: window.location.origin
+          origin: window.location.origin,
+          fullUrl: window.location.href,
+          localStorage: {
+            auth_token: !!localStorage.getItem('auth_token'),
+            refresh_token: !!localStorage.getItem('refresh_token'),
+            user_authenticated: localStorage.getItem('user_authenticated'),
+            user_id: localStorage.getItem('user_id'),
+            supabase_session: !!localStorage.getItem('supabase_session')
+          }
         };
         setDebugInfo(debug);
+        console.log('Auth callback debug info:', debug);
+        
+        // Log Supabase configuration
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://bxgdijqjdtbgzycvngug.supabase.co';
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        
+        console.log('Auth callback URL:', window.location.href);
+        console.log('Auth callback parameters:', {
+          url: supabaseUrl,
+          hasKey: !!supabaseAnonKey,
+          keyLength: supabaseAnonKey ? supabaseAnonKey.length : 0
+        });
         
         // First, try to directly exchange the code if it exists in the URL
         if (location.search && location.search.includes('code=')) {
           console.log('Found code in URL, attempting direct exchange...');
-          const searchParams = new URLSearchParams(location.search);
-          const code = searchParams.get('code');
           
-          if (code) {
-            console.log('Exchanging code for session...');
-            try {
-              const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-              
-              console.log('Code exchange response:', data);
-              
-              if (exchangeError) {
-                console.error('Error exchanging code for session:', exchangeError);
-                setError(`Error exchanging code: ${exchangeError.message}`);
-                return;
-              }
-              
-              if (data && data.session) {
-                console.log('Session obtained from code exchange:', data.session);
-                
-                // Set the token for API calls
-                const token = data.session.access_token;
-                apiClient.setToken(token);
-                
-                // Store tokens in localStorage
-                localStorage.setItem('auth_token', token);
-                localStorage.setItem('refresh_token', data.session.refresh_token);
-                
-                // Get user data
-                const userData = data.user;
-                
-                if (userData) {
-                  console.log('User data obtained from code exchange:', userData);
-                  
-                  // Update user in context
-                  updateUser(userData);
-                  
-                  // Store user data in localStorage
-                  localStorage.setItem('user_authenticated', 'true');
-                  localStorage.setItem('user_id', userData.id);
-                  
-                  // Redirect to dashboard
-                  setStatus('Authentication successful! Redirecting...');
-                  setTimeout(() => {
-                    console.log('Navigating to Dashboard...');
-                    navigate('/Dashboard', { replace: true });
-                  }, 500);
-                  return;
-                }
-              }
-            } catch (exchangeError) {
-              console.error('Error in code exchange process:', exchangeError);
-              // Continue to other methods if code exchange fails
+          try {
+            // For Supabase PKCE flow, we need to explicitly exchange the code for a session
+            // This is the most reliable way to handle the callback
+            console.log('Attempting to exchange code for session with full URL');
+            const result = await supabase.auth.exchangeCodeForSession(window.location.href);
+            console.log('Code exchange result:', result);
+            
+            // After code exchange, check if we have a session
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+            
+            console.log('Session after code exchange:', { 
+              hasSession: !!sessionData?.session, 
+              error: sessionError?.message,
+              session: sessionData?.session ? {
+                accessToken: !!sessionData.session.access_token,
+                refreshToken: !!sessionData.session.refresh_token,
+                expiresAt: sessionData.session.expires_at
+              } : null
+            });
+            
+            if (sessionError) {
+              console.error('Error getting session after code exchange:', sessionError);
+              setError(`Authentication error: ${sessionError.message}`);
+              return;
             }
+            
+            if (!sessionData?.session) {
+              console.error('No session found after code exchange');
+              setError('No valid session found. Please try logging in again.');
+              return;
+            }
+            
+            console.log('Session obtained after code exchange:', sessionData.session);
+            
+            // Set the token for API calls
+            const token = sessionData.session.access_token;
+            apiClient.setToken(token);
+            
+            // Store tokens in localStorage
+            localStorage.setItem('auth_token', token);
+            localStorage.setItem('refresh_token', sessionData.session.refresh_token);
+            localStorage.setItem('supabase_session', JSON.stringify({
+              access_token: sessionData.session.access_token,
+              refresh_token: sessionData.session.refresh_token,
+              expires_at: sessionData.session.expires_at
+            }));
+            
+            // Get user data
+            const { data: userData, error: userError } = await supabase.auth.getUser();
+            
+            console.log('User data after code exchange:', {
+              hasUser: !!userData?.user,
+              error: userError?.message,
+              userId: userData?.user?.id
+            });
+            
+            if (userError) {
+              console.error('Error getting user data after code exchange:', userError);
+              setError(`Error getting user data: ${userError.message}`);
+              return;
+            }
+            
+            if (!userData?.user) {
+              console.error('No user data found after code exchange');
+              setError('No user data found. Please try logging in again.');
+              return;
+            }
+            
+            console.log('User data obtained after code exchange:', userData.user);
+            
+            // Update user in context
+            updateUser(userData.user);
+            
+            // Store user data in localStorage
+            localStorage.setItem('user_authenticated', 'true');
+            localStorage.setItem('user_id', userData.user.id);
+            
+            // Check localStorage to verify everything is set correctly
+            console.log('LocalStorage state before redirect:', {
+              auth_token: !!localStorage.getItem('auth_token'),
+              refresh_token: !!localStorage.getItem('refresh_token'),
+              user_authenticated: localStorage.getItem('user_authenticated'),
+              user_id: localStorage.getItem('user_id'),
+              supabase_session: !!localStorage.getItem('supabase_session')
+            });
+            
+            // Redirect to dashboard
+            setStatus('Authentication successful! Redirecting...');
+            
+            // Use a direct window.location for a hard redirect
+            console.log('Redirecting to Dashboard with hard navigation...');
+            setTimeout(() => {
+              window.location.href = '/Dashboard';
+            }, 500);
+            
+            return;
+          } catch (exchangeError) {
+            console.error('Error in code exchange process:', exchangeError);
+            setError(`Error exchanging code: ${exchangeError.message || 'Unknown error'}`);
+            // Continue to other methods if code exchange fails
           }
         }
         
@@ -185,23 +254,31 @@ const AuthCallback = () => {
                     // Update user in context
                     updateUser(apiUserData.user);
                     
-                    // Store user data in localStorage
+                    // Store user data in localStorage with more explicit logging
+                    console.log('Setting authentication data in localStorage');
                     localStorage.setItem('user_authenticated', 'true');
                     localStorage.setItem('user_id', apiUserData.user.id);
                     
-                    // Redirect to dashboard
+                    // Redirect to dashboard with explicit logging
                     setStatus('Authentication successful! Redirecting...');
+                    console.log('Authentication successful, redirecting to Dashboard...');
+                    
+                    // Add a small delay to ensure localStorage is updated before navigation
                     setTimeout(() => {
-                      navigate('/Dashboard', { replace: true });
-                    }, 500);
+                      console.log('Executing navigation to Dashboard...');
+                      // Force a hard navigation to ensure full page reload with new auth state
+                      window.location.href = '/Dashboard';
+                    }, 1000);
                     return;
                   }
                 } catch (apiError) {
                   console.error('Error getting user data from API:', apiError);
+                  setError(`API error: ${apiError.message || 'Unknown error'}`);
                 }
               }
             } catch (userError) {
               console.error('Error getting user data with token:', userError);
+              setError(`User data error: ${userError.message || 'Unknown error'}`);
             }
           }
         }
@@ -219,146 +296,107 @@ const AuthCallback = () => {
             return;
           }
           
-          const session = data.session;
-          
-          if (!session) {
-            console.error('No session found');
-            setError('No valid session found. Please try logging in again.');
-            return;
-          }
-          
-          console.log('Session obtained, setting token...');
-          setStatus('Session obtained, getting user profile...');
-          
-          // Set the token for API calls
-          const token = session.access_token;
-          apiClient.setToken(token);
-          
-          // Store tokens in localStorage
-          localStorage.setItem('auth_token', token);
-          localStorage.setItem('refresh_token', session.refresh_token);
-          
-          // Get user data from Supabase
-          const { data: userData, error: userError } = await supabase.auth.getUser();
-          
-          if (userError) {
-            console.error('Error getting user data from Supabase:', userError);
-            setError(`Error getting user data: ${userError.message}`);
-            return;
-          }
-          
-          if (!userData || !userData.user) {
-            console.error('User data not found in Supabase response');
-            setError('User profile not found. Please try logging in again.');
-            return;
-          }
-          
-          console.log('User profile obtained from Supabase:', userData.user);
-          setStatus('Authentication successful! Redirecting...');
-          
-          // Update user in context
-          updateUser(userData.user);
-          
-          // Store user data in localStorage
-          localStorage.setItem('user_authenticated', 'true');
-          localStorage.setItem('user_id', userData.user.id);
-          
-          // Redirect to dashboard or stored return URL
-          setTimeout(() => {
-            const returnUrl = localStorage.getItem('auth_return_url');
-            if (returnUrl) {
-              localStorage.removeItem('auth_return_url');
-              console.log('Navigating to stored return URL:', returnUrl);
-              window.location.href = returnUrl;
-            } else {
-              console.log('Navigating to Dashboard...');
-              navigate('/Dashboard', { replace: true });
+          if (data?.session) {
+            console.log('Found existing session:', data.session);
+            
+            // Set the token for API calls
+            apiClient.setToken(data.session.access_token);
+            
+            // Store tokens in localStorage
+            localStorage.setItem('auth_token', data.session.access_token);
+            localStorage.setItem('refresh_token', data.session.refresh_token);
+            
+            // Get user data
+            const { data: userData, error: userError } = await supabase.auth.getUser();
+            
+            if (userError) {
+              console.error('Error getting user data from session:', userError);
+              setError(`Error getting user data: ${userError.message}`);
+              return;
             }
-          }, 500);
+            
+            if (!userData?.user) {
+              console.error('No user data found in session');
+              setError('No user data found. Please try logging in again.');
+              return;
+            }
+            
+            console.log('User data obtained from session:', userData.user);
+            
+            // Update user in context
+            updateUser(userData.user);
+            
+            // Store user data in localStorage
+            localStorage.setItem('user_authenticated', 'true');
+            localStorage.setItem('user_id', userData.user.id);
+            
+            // Redirect to dashboard
+            setStatus('Authentication successful! Redirecting...');
+            setTimeout(() => {
+              navigate('/Dashboard', { replace: true });
+            }, 500);
+            return;
+          }
+          
+          // If we get here, no authentication was found
+          console.log('No authentication found');
+          setError('No authentication found. Please try logging in again.');
         } catch (error) {
-          console.error('Error getting session:', error);
-          setError(`Error getting session: ${error.message}`);
+          console.error('Error in auth callback:', error);
+          setError(`Authentication error: ${error.message || 'Unknown error'}`);
         }
       } catch (error) {
-        console.error('Authentication callback error:', error);
-        setError(`Authentication error: ${error.message}`);
+        console.error('Unexpected error in auth callback:', error);
+        setError(`Unexpected error: ${error.message || 'Unknown error'}`);
       }
     };
-
+    
     handleCallback();
-  }, [navigate, location, updateUser]);
-
-  // Add a manual login function for debugging
+  }, [location, navigate, updateUser]);
+  
   const handleManualLogin = () => {
-    try {
-      // Parse the token from the debug info
-      const hash = debugInfo.hash || '';
-      const tokens = extractTokensFromHash(hash);
-      
-      if (tokens.accessToken) {
-        // Set the token for API calls
-        apiClient.setToken(tokens.accessToken);
-        
-        // Store tokens in localStorage
-        localStorage.setItem('auth_token', tokens.accessToken);
-        if (tokens.refreshToken) {
-          localStorage.setItem('refresh_token', tokens.refreshToken);
-        }
-        
-        // Redirect to dashboard
-        navigate('/Dashboard', { replace: true });
-      } else {
-        setError('No access token found in debug info');
-      }
-    } catch (error) {
-      console.error('Manual login error:', error);
-      setError(`Manual login error: ${error.message}`);
-    }
+    navigate('/login');
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-50 via-white to-indigo-50 p-4">
-      <div className="w-full max-w-md text-center">
-        <div className="mx-auto w-16 h-16 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full flex items-center justify-center mb-4">
-          <span className="text-2xl font-bold text-white">L</span>
+    <div className="flex flex-col items-center justify-center min-h-screen p-4">
+      <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-lg">
+        <h1 className="text-2xl font-bold text-center mb-4">Authentication</h1>
+        
+        <div className="text-center mb-6">
+          <p className="text-gray-700">{status}</p>
+          
+          {error && (
+            <div className="mt-4 p-3 bg-red-100 text-red-700 rounded-md">
+              <p className="font-semibold">Error</p>
+              <p>{error}</p>
+            </div>
+          )}
         </div>
         
-        <h1 className="text-2xl font-bold text-gray-800 mb-4">
-          {error ? 'Authentication Failed' : 'Authenticating...'}
-        </h1>
+        <div className="flex flex-col gap-3">
+          {error && (
+            <button
+              onClick={handleManualLogin}
+              className="w-full py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              Go to Login Page
+            </button>
+          )}
+          
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="w-full py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+          >
+            {showDebug ? 'Hide Debug Info' : 'Show Debug Info'}
+          </button>
+        </div>
         
-        {!error ? (
-          <>
-            <p className="text-gray-600 mb-4">{status}</p>
-            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-purple-600 to-indigo-600 animate-pulse"></div>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-red-500 mb-6">{error}</p>
-            <div className="flex space-x-4 justify-center">
-              <button
-                onClick={() => navigate('/Login', { replace: true })}
-                className="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-lg shadow hover:shadow-lg transition-all duration-300"
-              >
-                Return to Login
-              </button>
-              
-              <button
-                onClick={handleManualLogin}
-                className="px-6 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white font-medium rounded-lg shadow hover:shadow-lg transition-all duration-300"
-              >
-                Try Manual Login
-              </button>
-            </div>
-            
-            {/* Debug information for development */}
-            <div className="mt-6 text-xs text-left bg-gray-100 p-4 rounded-md overflow-auto max-h-40">
-              <p className="font-semibold mb-1">Debug Info:</p>
-              <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
-            </div>
-          </>
+        {showDebug && (
+          <div className="mt-6 p-4 bg-gray-100 rounded-md text-xs overflow-auto max-h-96">
+            <h3 className="font-semibold mb-2">Debug Information</h3>
+            <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+          </div>
         )}
       </div>
     </div>

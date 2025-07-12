@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authentication Callback</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/dist/umd/supabase.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      background: linear-gradient(to bottom right, #f3f4f6, #ffffff, #eef2ff);
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      background-color: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      padding: 2rem;
+      width: 90%;
+      max-width: 500px;
+      text-align: center;
+    }
+    h1 {
+      color: #4f46e5;
+      margin-bottom: 1rem;
+    }
+    p {
+      color: #6b7280;
+      margin-bottom: 2rem;
+    }
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #4f46e5;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 2rem;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .button {
+      background: linear-gradient(to right, #8b5cf6, #6366f1);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 0.75rem 1.5rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin: 0.5rem 0;
+      width: 100%;
+    }
+    .button:hover {
+      background: linear-gradient(to right, #7c3aed, #4f46e5);
+    }
+    .button-outline {
+      background: transparent;
+      border: 1px solid #d1d5db;
+      color: #4b5563;
+    }
+    .button-outline:hover {
+      background: #f9fafb;
+    }
+    .error {
+      background-color: #fee2e2;
+      color: #b91c1c;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1.5rem;
+    }
+    .debug {
+      background-color: #f3f4f6;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-top: 2rem;
+      text-align: left;
+      overflow: auto;
+      max-height: 200px;
+      font-family: monospace;
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="loading">
+      <div class="loader"></div>
+      <h1>Processing Authentication</h1>
+      <p>Please wait while we complete your login...</p>
+      <button class="button button-outline" onclick="clearAndRetry()">Clear and Retry</button>
+      <button class="button button-outline" onclick="returnToLogin()">Return to Login</button>
+    </div>
+    
+    <div id="error" style="display: none;">
+      <h1>Authentication Failed</h1>
+      <div class="error" id="error-message"></div>
+      <button class="button" onclick="returnToLogin()">Return to Login</button>
+      <button class="button button-outline" onclick="clearAndRetry()">Clear and Retry</button>
+      <div class="debug" id="debug-info"></div>
+    </div>
+  </div>
+
+  <script>
+    // Supabase configuration
+    const SUPABASE_URL = 'https://bxgdijqjdtbgzycvngug.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.axSb9Ew1TelVzo-4EsbWO8vxYjuU_0FAxWMpbWrgfIw';
+    
+    // Create Supabase client
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    
+    // Debug information
+    const debugInfo = {
+      url: window.location.href,
+      search: window.location.search,
+      hash: window.location.hash,
+      pathname: window.location.pathname
+    };
+    
+    // Display error
+    function showError(message) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error').style.display = 'block';
+      document.getElementById('error-message').textContent = message;
+      document.getElementById('debug-info').textContent = JSON.stringify(debugInfo, null, 2);
+    }
+    
+    // Clear storage and retry
+    function clearAndRetry() {
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.reload();
+    }
+    
+    // Return to login page
+    function returnToLogin() {
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/Login';
+    }
+    
+    // Handle authentication callback
+    async function handleCallback() {
+      try {
+        console.log('Auth callback debug info:', debugInfo);
+        
+        // Extract the code from the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        
+        if (!code) {
+          showError('No authentication code found in URL');
+          return;
+        }
+        
+        console.log('Found code in URL, exchanging for session...');
+        
+        try {
+          // Clear any existing auth data
+          localStorage.clear();
+          sessionStorage.clear();
+          
+          // Exchange the code for a session
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          
+          if (error) {
+            console.error('Error exchanging code:', error);
+            showError(`Authentication error: ${error.message}`);
+            return;
+          }
+          
+          if (!data?.session) {
+            showError('No session returned from code exchange');
+            return;
+          }
+          
+          console.log('Successfully exchanged code for session');
+          
+          // Store the session in localStorage
+          localStorage.setItem('supabase.auth.token', JSON.stringify({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+            expires_at: data.session.expires_at
+          }));
+          
+          // Redirect to dashboard
+          window.location.replace('/Dashboard');
+        } catch (exchangeError) {
+          console.error('Exception during code exchange:', exchangeError);
+          showError(`Code exchange error: ${exchangeError.message}`);
+        }
+      } catch (error) {
+        console.error('Error in auth callback:', error);
+        showError(`Authentication error: ${error.message}`);
+      }
+    }
+    
+    // Set a timeout to prevent infinite loading
+    setTimeout(() => {
+      const loading = document.getElementById('loading');
+      if (loading.style.display !== 'none') {
+        showError('Authentication timed out. Please try again.');
+      }
+    }, 15000);
+    
+    // Start the authentication process
+    handleCallback();
+  </script>
+</body>
+</html> 

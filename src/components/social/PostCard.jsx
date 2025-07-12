@@ -100,7 +100,7 @@ export default function PostCard({ post, currentUser }) {
   const authorId = post?.author_id;
 
   const checkIfLiked = useCallback(async () => {
-    if (!currentUser || !postId) {
+    if (!currentUser || !currentUser.id || !postId) {
         setIsCheckingLike(false);
         return;
     }
@@ -124,7 +124,7 @@ export default function PostCard({ post, currentUser }) {
   }, [currentUser, postId]);
 
   const checkIfSaved = useCallback(async () => {
-    if (!currentUser || !postId) {
+    if (!currentUser || !currentUser.id || !postId) {
         setIsCheckingSave(false);
         return;
     }
@@ -197,7 +197,7 @@ export default function PostCard({ post, currentUser }) {
   }, [post?.track_id, loadTrack]);
 
   const handleLikeToggle = async () => {
-    if (!currentUser || !postId) return;
+    if (!currentUser || !currentUser.id || !postId) return;
     
     const wasLiked = isLiked;
     setIsLiked(!wasLiked);

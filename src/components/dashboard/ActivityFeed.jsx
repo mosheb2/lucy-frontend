@@ -21,14 +21,14 @@ const QuickPostCreator = ({ user, onPost, isExpanded, setIsExpanded }) => {
   };
 
   const handlePost = async () => {
-    if (!postText.trim() || isPosting) return;
+    if (!postText.trim() || isPosting || !user || !user.id) return;
     
     setIsPosting(true);
     try {
       const newPost = await Post.create({
         author_id: user.id,
-        author_name: user.artist_name || user.full_name,
-        author_avatar_url: user.profile_image_url,
+        author_name: user.artist_name || user.full_name || 'Anonymous',
+        author_avatar_url: user.profile_image_url || '',
         content: postText.trim(),
       });
       
@@ -41,6 +41,11 @@ const QuickPostCreator = ({ user, onPost, isExpanded, setIsExpanded }) => {
       setIsPosting(false);
     }
   };
+
+  // Disable the component if no user is provided
+  if (!user) {
+    return null;
+  }
 
   return (
     <motion.div
@@ -117,18 +122,34 @@ export default function ActivityFeed({ user }) {
   useEffect(() => {
     if (user) {
       loadRecentPosts();
+    } else {
+      // If no user is provided, just set loading to false
+      setLoading(false);
     }
   }, [user]);
 
   const loadRecentPosts = async () => {
+    if (!user || !user.id) {
+      setLoading(false);
+      setPosts([]);
+      return;
+    }
+    
     setLoading(true);
     try {
       // Get recent posts from people user follows + own posts
       const follows = await Follow.filter({ follower_id: user.id });
-      const followedUserIds = follows.map(f => f.following_id);
+      const followedUserIds = Array.isArray(follows) ? follows.map(f => f.following_id) : [];
       const allUserIds = [user.id, ...followedUserIds];
 
       const recentPosts = await Post.list('-created_date', 6);
+      
+      // Safety check to ensure recentPosts is an array
+      if (!Array.isArray(recentPosts)) {
+        setPosts([]);
+        return;
+      }
+      
       const relevantPosts = recentPosts.filter(post => 
         allUserIds.includes(post.author_id) || Math.random() > 0.7 // Include some random posts for discovery
       );

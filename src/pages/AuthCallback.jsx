@@ -2,7 +2,22 @@ import React, { useEffect, useState } from 'react';
 import { Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { supabase } from '@/api/supabase-auth-fixed';
+import { createClient } from '@supabase/supabase-js';
+
+// Hardcoded Supabase configuration
+const SUPABASE_URL = 'https://bxgdijqjdtbgzycvngug.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.axSb9Ew1TelVzo-4EsbWO8vxYjuU_0FAxWMpbWrgfIw';
+
+// Create a completely standalone client for auth callback
+const callbackClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false, // We'll handle this manually
+    storage: localStorage,
+    storageKey: 'supabase.auth.token'
+  }
+});
 
 const AuthCallback = () => {
   const [loading, setLoading] = useState(true);
@@ -25,32 +40,88 @@ const AuthCallback = () => {
         setDebugInfo(debug);
         console.log('Auth callback debug info:', debug);
 
-        // For PKCE flow, we don't need to do anything here
-        // The Supabase client will automatically detect the code in the URL
-        // and exchange it for a session
-
-        // Wait a moment to allow Supabase to process the auth callback
-        setTimeout(async () => {
-          // Check if we have a session
-          const { data, error: sessionError } = await supabase.auth.getSession();
+        // Extract the code from the URL
+        if (window.location.search && window.location.search.includes('code=')) {
+          const params = new URLSearchParams(window.location.search);
+          const code = params.get('code');
           
-          if (sessionError) {
-            console.error('Error getting session:', sessionError);
-            setError(`Session error: ${sessionError.message}`);
+          if (!code) {
+            setError('No authentication code found in URL');
             setLoading(false);
             return;
           }
+
+          console.log('Found code in URL, attempting manual session creation...');
           
-          if (data?.session) {
-            console.log('Session found, redirecting to Dashboard');
-            // We have a session, redirect to dashboard
+          try {
+            // Get the code verifier from localStorage
+            const codeVerifier = localStorage.getItem('supabase.auth.token-code-verifier');
+            
+            if (!codeVerifier) {
+              setError('No code verifier found in localStorage. This is required for PKCE authentication.');
+              setLoading(false);
+              return;
+            }
+            
+            // Manually construct the session URL
+            const sessionUrl = `${SUPABASE_URL}/auth/v1/token?grant_type=pkce`;
+            
+            // Make the request to exchange the code for a session
+            const response = await fetch(sessionUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': SUPABASE_KEY
+              },
+              body: JSON.stringify({
+                auth_code: code,
+                code_verifier: codeVerifier
+              })
+            });
+            
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error_description || errorData.error || 'Failed to exchange code for session');
+            }
+            
+            const data = await response.json();
+            
+            if (!data.access_token) {
+              setError('No access token returned from code exchange');
+              setLoading(false);
+              return;
+            }
+            
+            console.log('Successfully exchanged code for session, storing token...');
+            
+            // Store the session in localStorage
+            const session = {
+              access_token: data.access_token,
+              refresh_token: data.refresh_token,
+              expires_at: Math.floor(Date.now() / 1000) + data.expires_in,
+              user: data.user
+            };
+            
+            localStorage.setItem('supabase.auth.token', JSON.stringify(session));
+            
+            // Clean up the code verifier
+            localStorage.removeItem('supabase.auth.token-code-verifier');
+            
+            // Set additional flags for compatibility
+            localStorage.setItem('user_authenticated', 'true');
+            
+            // Redirect to dashboard
+            console.log('Session stored, redirecting to Dashboard...');
             window.location.href = '/Dashboard';
-          } else {
-            // No session, show error
-            setError('Authentication failed. No session was created.');
+          } catch (exchangeError) {
+            console.error('Error during manual session creation:', exchangeError);
+            setError(`Authentication error: ${exchangeError.message}`);
             setLoading(false);
           }
-        }, 2000); // Wait 2 seconds for Supabase to process
+        } else {
+          setError('No authentication code found in URL');
+          setLoading(false);
+        }
       } catch (error) {
         console.error('Error in auth callback:', error);
         setError(`Authentication error: ${error.message}`);

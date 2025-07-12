@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import apiClient from '@/api/client';
-import { supabase } from '@/api/supabase-auth';
+// Import the fixed Supabase client
+import { supabase } from '@/api/supabase-auth-fixed';
 
 const AuthContext = createContext();
 
@@ -200,224 +201,276 @@ export const AuthProvider = ({ children }) => {
             // Update localStorage
             localStorage.setItem('user_authenticated', 'true');
             localStorage.setItem('user_id', userData.user.id);
-            console.log('Updated authentication state in localStorage');
+            
+            console.log('Authentication established from API token');
             setLoading(false);
             return;
           } catch (error) {
-            console.error('Error getting current user with API token:', error);
+            console.error('Error getting user with token:', error);
             
-            // Try to refresh the token if we have a refresh token
-            if (refreshToken) {
-              try {
-                console.log('Attempting to refresh token on startup');
-                const refreshResponse = await apiClient.refreshToken(refreshToken);
-                
-                if (refreshResponse && refreshResponse.session?.access_token) {
-                  // Successfully refreshed, try to get user again
-                  console.log('Token refreshed successfully, getting user data');
-                  const userData = await apiClient.getCurrentUser();
-                  const userWithProfile = await fetchUserWithProfile(userData.user);
-                  setUser(userWithProfile);
-                  
-                  // Update localStorage
-                  localStorage.setItem('user_authenticated', 'true');
-                  localStorage.setItem('user_id', userData.user.id);
-                  console.log('Updated authentication state after token refresh');
-                  setLoading(false);
-                  return;
-                } else {
-                  // Refresh failed, clear auth data
-                  console.log('Token refresh failed, clearing auth data');
-                  clearAuthData();
-                }
-              } catch (refreshError) {
-                console.error('Failed to refresh token on startup:', refreshError);
-                clearAuthData();
-              }
-            } else {
-              // No refresh token, clear auth data
-              console.log('No refresh token available, clearing auth data');
-              clearAuthData();
-            }
+            // Clear invalid token
+            localStorage.removeItem('auth_token');
+            apiClient.clearToken();
+            
+            setAuthError('Session expired. Please login again.');
           }
-        } else {
-          console.log('No authentication data found, user is not logged in');
-          clearAuthData();
         }
+        
+        // If we get here, user is not authenticated
+        console.log('No valid authentication found');
+        setUser(null);
+        clearAuthData();
       } catch (error) {
-        console.error('Error getting initial session:', error);
-        setAuthError(error.message);
+        console.error('Error in getInitialSession:', error);
+        setAuthError('Failed to initialize session');
+        setUser(null);
         clearAuthData();
       } finally {
         setLoading(false);
       }
     };
-    
-    // Helper function to clear authentication data
+
+    // Clear auth data from localStorage
     const clearAuthData = () => {
-      apiClient.setToken(null);
       localStorage.removeItem('auth_token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user_authenticated');
       localStorage.removeItem('user_id');
       localStorage.removeItem('supabase_session');
-      setUser(null);
+      apiClient.clearToken();
     };
 
-    getInitialSession();
-    
-    // Set up auth state change listener for Supabase
-    const unsubscribe = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Supabase auth state changed:', { event, hasSession: !!session });
+    // Set up Supabase auth listener
+    const setupSupabaseAuthListener = () => {
+      console.log('Setting up Supabase auth listener');
       
-      if (event === 'SIGNED_IN' && session) {
-        console.log('User signed in via Supabase, updating state');
-        const token = session.access_token;
-        apiClient.setToken(token);
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('Supabase auth state changed:', event);
         
-        // Store tokens in localStorage
-        localStorage.setItem('auth_token', token);
-        localStorage.setItem('refresh_token', session.refresh_token);
-        localStorage.setItem('user_authenticated', 'true');
-        localStorage.setItem('user_id', session.user.id);
-        
-        // Store Supabase session data
-        localStorage.setItem('supabase_session', JSON.stringify({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-          expires_at: session.expires_at
-        }));
-        
-        // Get user data and update state
-        fetchUserWithProfile(session.user).then(userWithProfile => {
-          setUser(userWithProfile);
-        });
-      } else if (event === 'SIGNED_OUT') {
-        console.log('User signed out via Supabase, clearing state');
-        clearAuthData();
-      } else if (event === 'TOKEN_REFRESHED' && session) {
-        console.log('Token refreshed via Supabase, updating tokens');
-        apiClient.setToken(session.access_token);
-        
-        // Update stored tokens
-        localStorage.setItem('auth_token', session.access_token);
-        localStorage.setItem('refresh_token', session.refresh_token);
-        
-        // Update stored session
-        localStorage.setItem('supabase_session', JSON.stringify({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-          expires_at: session.expires_at
-        }));
-      } else if (event === 'USER_UPDATED' && session) {
-        console.log('User data updated via Supabase, refreshing user data');
-        fetchUserWithProfile(session.user).then(userWithProfile => {
-          setUser(userWithProfile);
-        });
-      }
-    });
+        if (event === 'SIGNED_IN' && session) {
+          console.log('User signed in via Supabase:', session.user.id);
+          
+          // Set token for API calls
+          apiClient.setToken(session.access_token);
+          
+          // Store tokens in localStorage
+          localStorage.setItem('auth_token', session.access_token);
+          localStorage.setItem('refresh_token', session.refresh_token);
+          localStorage.setItem('user_authenticated', 'true');
+          localStorage.setItem('user_id', session.user.id);
+          localStorage.setItem('supabase_session', JSON.stringify({
+            access_token: session.access_token,
+            refresh_token: session.refresh_token,
+            expires_at: session.expires_at
+          }));
+          
+          // Get user data
+          const { data: userData, error: userError } = await supabase.auth.getUser();
+          
+          if (userError) {
+            console.error('Error getting user data after sign in:', userError);
+            setAuthError('Failed to get user data');
+          } else if (userData?.user) {
+            console.log('Got user data after sign in:', userData.user.id);
+            const userWithProfile = await fetchUserWithProfile(userData.user);
+            setUser(userWithProfile);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          console.log('User signed out via Supabase');
+          setUser(null);
+          clearAuthData();
+        } else if (event === 'TOKEN_REFRESHED' && session) {
+          console.log('Supabase token refreshed');
+          
+          // Update token for API calls
+          apiClient.setToken(session.access_token);
+          
+          // Update tokens in localStorage
+          localStorage.setItem('auth_token', session.access_token);
+          localStorage.setItem('refresh_token', session.refresh_token);
+          localStorage.setItem('supabase_session', JSON.stringify({
+            access_token: session.access_token,
+            refresh_token: session.refresh_token,
+            expires_at: session.expires_at
+          }));
+        }
+      });
+      
+      return subscription;
+    };
+
+    // Initialize
+    getInitialSession();
+    const subscription = setupSupabaseAuthListener();
     
+    // Cleanup
     return () => {
-      if (unsubscribe) unsubscribe();
+      if (subscription) {
+        subscription.unsubscribe();
+      }
     };
   }, []);
 
+  // Update user
+  const updateUser = (newUser) => {
+    setUser(newUser);
+  };
+
+  // Sign in
   const signIn = async (credentials) => {
+    setLoading(true);
     try {
-      const response = await apiClient.signIn(credentials);
-      if (response.user) {
-        const userWithProfile = await fetchUserWithProfile(response.user);
-        setUser(userWithProfile);
-        
-        // Update localStorage
-        localStorage.setItem('user_authenticated', 'true');
-        localStorage.setItem('user_id', response.user.id);
+      const { data, error } = await supabase.auth.signInWithPassword(credentials);
+      
+      if (error) {
+        console.error('Error signing in:', error);
+        setAuthError(error.message);
+        return { error };
       }
-      return response;
+      
+      return { data };
     } catch (error) {
-      throw error;
+      console.error('Exception during sign in:', error);
+      setAuthError(error.message);
+      return { error };
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Sign up
   const signUp = async (userData) => {
+    setLoading(true);
     try {
-      const response = await apiClient.signUp(userData);
-      // Note: signup doesn't automatically sign in, user needs to confirm email
-      return response;
+      const { data, error } = await supabase.auth.signUp(userData);
+      
+      if (error) {
+        console.error('Error signing up:', error);
+        setAuthError(error.message);
+        return { error };
+      }
+      
+      return { data };
     } catch (error) {
-      throw error;
+      console.error('Exception during sign up:', error);
+      setAuthError(error.message);
+      return { error };
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Sign out
   const signOut = async () => {
+    setLoading(true);
     try {
-      await apiClient.signOut();
       await supabase.auth.signOut();
+      setUser(null);
       clearAuthData();
     } catch (error) {
-      // Even if signout fails, clear local state
-      clearAuthData();
-      throw error;
+      console.error('Error signing out:', error);
+      setAuthError(error.message);
+    } finally {
+      setLoading(false);
     }
   };
-  
-  // Helper function to clear authentication data
+
+  // Clear auth data
   const clearAuthData = () => {
-    apiClient.setToken(null);
     localStorage.removeItem('auth_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user_authenticated');
     localStorage.removeItem('user_id');
     localStorage.removeItem('supabase_session');
-    setUser(null);
+    apiClient.clearToken();
   };
 
+  // Sign in with OAuth
   const signInWithOAuth = async (provider) => {
+    setLoading(true);
     try {
-      console.log(`Initiating OAuth sign-in with provider: ${provider}`);
-      
-      // Use Supabase's OAuth directly
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          skipBrowserRedirect: false,
-          queryParams: {
-            access_type: 'offline', // For Google, request a refresh token
-            prompt: 'consent'       // Force consent screen to ensure refresh token
-          }
+          redirectTo: `${window.location.origin}/auth/callback`
         }
       });
       
       if (error) {
-        console.error(`OAuth sign-in error with provider ${provider}:`, error);
-        throw error;
+        console.error('Error signing in with OAuth:', error);
+        setAuthError(error.message);
+        return { error };
       }
       
-      if (data.url) {
-        // Redirect to the OAuth provider's authorization page
-        window.location.href = data.url;
-      } else {
-        console.error('No redirect URL returned from Supabase OAuth');
-        throw new Error('OAuth initialization failed');
-      }
+      return { data };
     } catch (error) {
-      console.error(`OAuth sign-in error with provider ${provider}:`, error);
-      throw error;
+      console.error('Exception during OAuth sign in:', error);
+      setAuthError(error.message);
+      return { error };
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Reset password
+  const resetPassword = async (email) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`
+      });
+      
+      if (error) {
+        console.error('Error resetting password:', error);
+        setAuthError(error.message);
+        return { error };
+      }
+      
+      return { data };
+    } catch (error) {
+      console.error('Exception during password reset:', error);
+      setAuthError(error.message);
+      return { error };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update password
+  const updatePassword = async (password) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.updateUser({ password });
+      
+      if (error) {
+        console.error('Error updating password:', error);
+        setAuthError(error.message);
+        return { error };
+      }
+      
+      return { data };
+    } catch (error) {
+      console.error('Exception during password update:', error);
+      setAuthError(error.message);
+      return { error };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Context value
   const value = {
     user,
     loading,
+    authError,
     signIn,
     signUp,
     signOut,
+    updateUser,
     signInWithOAuth,
-    isAuthenticated: !!user,
-    authError,
-    updateUser: setUser, // Add function to update user data
-    apiClient, // Expose API client for other components to use
+    resetPassword,
+    updatePassword,
+    clearAuthError: () => setAuthError(null)
   };
 
   return (

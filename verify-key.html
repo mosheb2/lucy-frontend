@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Verify Supabase Key</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+    }
+    .key-container {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+    .success {
+      color: green;
+      font-weight: bold;
+    }
+    .error {
+      color: red;
+      font-weight: bold;
+    }
+    .info {
+      margin-top: 10px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Supabase Key Verification</h1>
+  
+  <div>
+    <h2>Key Information:</h2>
+    <div class="key-container" id="key-display"></div>
+    
+    <div class="info" id="key-info"></div>
+  </div>
+  
+  <script>
+    // The key to verify
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.T_KZxQHOxYvgIYLGpDXVqCj9Vgdp8YFvgSt0JHsLvAc';
+    
+    // Display the key
+    document.getElementById('key-display').textContent = supabaseKey;
+    
+    // Check the key
+    const keyInfo = document.getElementById('key-info');
+    
+    // Check for line breaks
+    const hasLineBreaks = supabaseKey.includes('\n');
+    const lineBreakInfo = document.createElement('p');
+    lineBreakInfo.textContent = `Has line breaks: ${hasLineBreaks}`;
+    lineBreakInfo.className = hasLineBreaks ? 'error' : 'success';
+    keyInfo.appendChild(lineBreakInfo);
+    
+    // Check length
+    const lengthInfo = document.createElement('p');
+    lengthInfo.textContent = `Key length: ${supabaseKey.length} characters`;
+    lengthInfo.className = supabaseKey.length > 100 ? 'success' : 'error';
+    keyInfo.appendChild(lengthInfo);
+    
+    // Try to parse as JWT
+    try {
+      const parts = supabaseKey.split('.');
+      if (parts.length === 3) {
+        const jwtInfo = document.createElement('p');
+        jwtInfo.textContent = 'Valid JWT format (has 3 parts separated by dots)';
+        jwtInfo.className = 'success';
+        keyInfo.appendChild(jwtInfo);
+        
+        // Try to decode the payload
+        try {
+          const payload = JSON.parse(atob(parts[1]));
+          const payloadInfo = document.createElement('p');
+          payloadInfo.textContent = `JWT payload: ${JSON.stringify(payload, null, 2)}`;
+          payloadInfo.className = 'success';
+          keyInfo.appendChild(payloadInfo);
+        } catch (e) {
+          const payloadError = document.createElement('p');
+          payloadError.textContent = `Error decoding JWT payload: ${e.message}`;
+          payloadError.className = 'error';
+          keyInfo.appendChild(payloadError);
+        }
+      } else {
+        const jwtError = document.createElement('p');
+        jwtError.textContent = `Invalid JWT format (has ${parts.length} parts, expected 3)`;
+        jwtError.className = 'error';
+        keyInfo.appendChild(jwtError);
+      }
+    } catch (e) {
+      const jwtError = document.createElement('p');
+      jwtError.textContent = `Error checking JWT: ${e.message}`;
+      jwtError.className = 'error';
+      keyInfo.appendChild(jwtError);
+    }
+  </script>
+</body>
+</html> 

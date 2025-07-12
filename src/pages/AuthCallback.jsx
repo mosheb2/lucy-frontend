@@ -1,31 +1,46 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/api/supabase-auth-fixed';
 import { Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+
+// Create a standalone Supabase client just for this component
+const SUPABASE_URL = 'https://bxgdijqjdtbgzycvngug.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.axSb9Ew1TelVzo-4EsbWO8vxYjuU_0FAxWMpbWrgfIw';
 
 const AuthCallback = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
   const [showDebug, setShowDebug] = useState(true);
-  const navigate = useNavigate();
 
   useEffect(() => {
-    // Function to handle the OAuth callback
-    const handleCallback = async () => {
+    // Load Supabase client dynamically
+    const loadSupabase = async () => {
       try {
+        // Import the Supabase client
+        const { createClient } = await import('@supabase/supabase-js');
+        
+        // Create a client instance
+        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+          auth: {
+            autoRefreshToken: true,
+            persistSession: true,
+            detectSessionInUrl: false, // We'll handle this manually
+            storage: window.localStorage
+          }
+        });
+        
         // Store debug info
         const debug = {
           url: window.location.href,
           hash: window.location.hash,
           search: window.location.search,
-          pathname: window.location.pathname
+          pathname: window.location.pathname,
+          localStorage: Object.keys(localStorage)
         };
         setDebugInfo(debug);
         console.log('Auth callback debug info:', debug);
-
+        
         // Extract the code from the URL
         if (window.location.search && window.location.search.includes('code=')) {
           const params = new URLSearchParams(window.location.search);
@@ -36,12 +51,14 @@ const AuthCallback = () => {
             setLoading(false);
             return;
           }
-
+          
           console.log('Found code in URL, exchanging for session...');
           
           try {
-            // Let Supabase handle the code exchange
-            // The onAuthStateChange listener in AuthContext will handle the session
+            // Clear any existing auth data
+            localStorage.removeItem('supabase.auth.token');
+            
+            // Exchange the code for a session
             const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
             
             if (exchangeError) {
@@ -57,10 +74,21 @@ const AuthCallback = () => {
               return;
             }
             
-            console.log('Successfully exchanged code for session, redirecting...');
+            console.log('Successfully exchanged code for session');
             
-            // Navigate to dashboard after successful authentication
-            navigate('/Dashboard', { replace: true });
+            // Store the session in localStorage
+            localStorage.setItem('supabase.auth.token', JSON.stringify({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+              expires_at: Math.floor(Date.now() / 1000) + data.session.expires_in
+            }));
+            
+            // Set additional flags for compatibility
+            localStorage.setItem('user_authenticated', 'true');
+            
+            // Redirect to dashboard
+            console.log('Redirecting to Dashboard...');
+            window.location.href = '/Dashboard';
           } catch (exchangeError) {
             console.error('Exception during code exchange:', exchangeError);
             setError(`Code exchange error: ${exchangeError.message}`);
@@ -76,7 +104,7 @@ const AuthCallback = () => {
         setLoading(false);
       }
     };
-
+    
     // Set a timeout to prevent infinite loading
     const timeoutId = setTimeout(() => {
       if (loading) {
@@ -85,22 +113,26 @@ const AuthCallback = () => {
         setError('Authentication timed out. Please try again.');
       }
     }, 15000); // 15 seconds timeout
-
-    handleCallback();
-
+    
+    loadSupabase();
+    
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [navigate]);
+  }, []);
 
   const handleReturnToLogin = () => {
-    navigate('/Login', { replace: true });
+    window.location.href = '/Login';
   };
 
   const handleClearAndRetry = () => {
     // Clear all storage and reload the page
     localStorage.clear();
     window.location.reload();
+  };
+  
+  const handleDebug = () => {
+    window.location.href = '/debug-auth.html' + window.location.search;
   };
 
   if (loading) {
@@ -160,6 +192,14 @@ const AuthCallback = () => {
             >
               <RefreshCw className="w-4 h-4 mr-2" />
               Clear and Retry
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={handleDebug}
+              className="mt-4"
+            >
+              Open Debug Tool
             </Button>
           </div>
         </div>

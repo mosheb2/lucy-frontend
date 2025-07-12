@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Mail, Lock, Eye, EyeOff, Facebook, Chrome, Wallet } from 'lucide-react';
+import { Loader2, Mail, Lock, Eye, EyeOff, Facebook, Chrome, Wallet, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginPage() {
@@ -19,7 +19,7 @@ export default function LoginPage() {
   
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signInWithOAuth, isAuthenticated } = useAuth();
+  const { signIn, signInWithOAuth, isAuthenticated, loading: authLoading } = useAuth();
 
   useEffect(() => {
     // Check if user is already authenticated
@@ -87,6 +87,11 @@ export default function LoginPage() {
     navigate('/Signup');
   };
 
+  const handleClearStorage = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-indigo-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -104,118 +109,133 @@ export default function LoginPage() {
           </CardHeader>
           
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium text-slate-700">
-                  Email Address
-                </Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    placeholder="Enter your email"
-                    className="pl-10 bg-white border-slate-200 focus:border-purple-500 focus:ring-purple-500"
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
+            {authLoading ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-purple-600 mb-4" />
+                <p className="text-slate-600">Checking authentication status...</p>
+                <Button 
+                  variant="outline" 
+                  className="mt-4"
+                  onClick={handleClearStorage}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Reset Authentication
+                </Button>
               </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium text-slate-700">
-                  Password
-                </Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    placeholder="Enter your password"
-                    className="pl-10 pr-10 bg-white border-slate-200 focus:border-purple-500 focus:ring-purple-500"
-                    required
-                    disabled={isLoading}
-                  />
-                  <button
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-sm font-medium text-slate-700">
+                    Email Address
+                  </Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      placeholder="Enter your email"
+                      className="pl-10 bg-white border-slate-200 focus:border-purple-500 focus:ring-purple-500"
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-sm font-medium text-slate-700">
+                    Password
+                  </Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                    <Input
+                      id="password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      placeholder="Enter your password"
+                      className="pl-10 pr-10 bg-white border-slate-200 focus:border-purple-500 focus:ring-purple-500"
+                      required
+                      disabled={isLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      disabled={isLoading}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+                
+                <Button
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    'Sign In'
+                  )}
+                </Button>
+
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-slate-200" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-white px-2 text-slate-500">Or continue with</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <Button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleOAuthSignIn('facebook')}
                     disabled={isLoading}
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                    <Facebook className="w-4 h-4 mr-2" />
+                    Facebook
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleOAuthSignIn('google')}
+                    disabled={isLoading}
+                  >
+                    <Chrome className="w-4 h-4 mr-2" />
+                    Google
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleOAuthSignIn('solana')}
+                    disabled={isLoading}
+                  >
+                    <Wallet className="w-4 h-4 mr-2" />
+                    Solana
+                  </Button>
                 </div>
-              </div>
-              
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-              
-              <Button
-                type="submit"
-                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  'Sign In'
-                )}
-              </Button>
-
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-slate-200" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-2 text-slate-500">Or continue with</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => handleOAuthSignIn('facebook')}
-                  disabled={isLoading}
-                >
-                  <Facebook className="w-4 h-4 mr-2" />
-                  Facebook
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => handleOAuthSignIn('google')}
-                  disabled={isLoading}
-                >
-                  <Chrome className="w-4 h-4 mr-2" />
-                  Google
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => handleOAuthSignIn('solana')}
-                  disabled={isLoading}
-                >
-                  <Wallet className="w-4 h-4 mr-2" />
-                  Solana
-                </Button>
-              </div>
-            </form>
+              </form>
+            )}
             
             <div className="mt-6 text-center">
               <p className="text-sm text-slate-600">
@@ -224,7 +244,7 @@ export default function LoginPage() {
                   variant="link"
                   className="text-purple-600 hover:text-purple-700 p-0 h-auto font-semibold"
                   onClick={handleSignupClick}
-                  disabled={isLoading}
+                  disabled={isLoading || authLoading}
                 >
                   Create an account
                 </Button>

@@ -71,6 +71,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    // Set a timeout to ensure loading doesn't get stuck
+    const loadingTimeout = setTimeout(() => {
+      if (loading) {
+        console.log('Loading timeout reached, forcing loading state to false');
+        setLoading(false);
+        setAuthError('Authentication timed out. Please try again.');
+      }
+    }, 10000); // 10 seconds timeout
+    
     // Get initial session
     const getInitialSession = async () => {
       try {
@@ -305,6 +314,7 @@ export const AuthProvider = ({ children }) => {
     
     // Cleanup
     return () => {
+      clearTimeout(loadingTimeout);
       if (subscription) {
         subscription.unsubscribe();
       }

@@ -11,6 +11,10 @@ let supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI
 // Remove any newlines or extra whitespace
 supabaseAnonKey = supabaseAnonKey.replace(/[\r\n\s]+/g, '').trim();
 
+// Use a consistent storage key across the application
+const STORAGE_KEY = 'supabase.auth.token';
+
+// Log configuration for debugging
 console.log('Supabase configuration:', {
   url: supabaseUrl,
   hasAnonKey: !!supabaseAnonKey,
@@ -27,34 +31,15 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-// Create the Supabase client with extensive debugging
-console.log('Creating Supabase client with URL:', supabaseUrl);
-console.log('API key length:', supabaseAnonKey.length);
-
 // Export the Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-    flowType: 'pkce', // Use PKCE flow for better security
-    debug: true, // Enable debug mode for more detailed logs
-    storage: {
-      getItem: (key) => {
-        console.log(`Getting item from storage: ${key}`);
-        const value = localStorage.getItem(key);
-        console.log(`Storage value for ${key}:`, value ? 'exists' : 'not found');
-        return value;
-      },
-      setItem: (key, value) => {
-        console.log(`Setting item in storage: ${key}`);
-        localStorage.setItem(key, value);
-      },
-      removeItem: (key) => {
-        console.log(`Removing item from storage: ${key}`);
-        localStorage.removeItem(key);
-      }
-    }
+    flowType: 'pkce',
+    storage: localStorage,
+    storageKey: STORAGE_KEY
   }
 });
 
@@ -134,17 +119,6 @@ export const auth = {
       
       console.log('Sign in result:', { success: !!data?.user, error: error?.message });
       if (error) throw error;
-      
-      // Store session data in localStorage for persistence
-      if (data.session) {
-        localStorage.setItem('supabase_session', JSON.stringify({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-          expires_at: data.session.expires_at
-        }));
-        console.log('Stored Supabase session in localStorage');
-      }
-      
       return data;
     } catch (error) {
       console.error('Error during signin:', error);
@@ -161,24 +135,15 @@ export const auth = {
       const providerMap = {
         'facebook': 'facebook',
         'google': 'google',
-        'solana': 'solana' // Assuming Solana is configured in Supabase
+        'solana': 'solana'
       };
       
       const mappedProvider = providerMap[provider.toLowerCase()] || provider;
       
-      // Use the current origin for redirectTo
-      const redirectUrl = `${window.location.origin}/auth/callback`;
-      console.log('Using redirect URL:', redirectUrl);
-      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: mappedProvider,
         options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: false, // Ensure browser redirects
-          queryParams: {
-            access_type: 'offline', // For Google, request a refresh token
-            prompt: 'consent'       // Force consent screen to ensure refresh token
-          }
+          redirectTo: `${window.location.origin}/auth/callback`
         }
       });
       
@@ -195,15 +160,7 @@ export const auth = {
   signOut: async () => {
     console.log('Signing out');
     try {
-      const { error } = await supabase.auth.signOut({ scope: 'global' }); // Sign out from all devices
-      
-      // Clear any stored session data
-      localStorage.removeItem('supabase_session');
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user_authenticated');
-      localStorage.removeItem('user_id');
-      
+      const { error } = await supabase.auth.signOut();
       console.log('Sign out result:', { error: error?.message });
       if (error) throw error;
     } catch (error) {
@@ -273,13 +230,13 @@ export const auth = {
       
       // Store session data in localStorage for persistence
       if (session) {
-        localStorage.setItem('supabase_session', JSON.stringify({
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
           access_token: session.access_token,
           refresh_token: session.refresh_token,
           expires_at: session.expires_at
         }));
       } else if (event === 'SIGNED_OUT') {
-        localStorage.removeItem('supabase_session');
+        localStorage.removeItem(STORAGE_KEY);
       }
       
       callback(event, session);
@@ -311,7 +268,7 @@ export const auth = {
   restoreSession: async () => {
     console.log('Attempting to restore session from localStorage');
     try {
-      const storedSession = localStorage.getItem('supabase_session');
+      const storedSession = localStorage.getItem(STORAGE_KEY);
       if (!storedSession) {
         console.log('No stored session found');
         return null;
@@ -326,7 +283,7 @@ export const auth = {
       
       if (expiresAt <= now) {
         console.log('Stored session is expired');
-        localStorage.removeItem('supabase_session');
+        localStorage.removeItem(STORAGE_KEY);
         return null;
       }
       

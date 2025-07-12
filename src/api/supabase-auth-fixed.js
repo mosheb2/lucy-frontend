@@ -4,6 +4,9 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = 'https://bxgdijqjdtbgzycvngug.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.axSb9Ew1TelVzo-4EsbWO8vxYjuU_0FAxWMpbWrgfIw';
 
+// Use a consistent storage key across the application
+const STORAGE_KEY = 'supabase.auth.token';
+
 // Initialize the Supabase client with optimal configuration
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -11,16 +14,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: true,
     flowType: 'pkce',
-    debug: true,
     storage: localStorage,
-    storageKey: 'supabase.auth.token',
-    cookieOptions: {
-      name: 'sb-auth-token',
-      lifetime: 60 * 60 * 24 * 7, // 1 week
-      domain: window.location.hostname,
-      path: '/',
-      sameSite: 'lax'
-    }
+    storageKey: STORAGE_KEY,
   }
 });
 

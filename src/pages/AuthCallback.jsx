@@ -48,6 +48,7 @@ const AuthCallback = () => {
   const [status, setStatus] = useState('Processing authentication...');
   const [error, setError] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
+  const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => {
     // Add a console log to show this component is mounted
@@ -80,6 +81,17 @@ const AuthCallback = () => {
         setDebugInfo(debug);
         console.log('Auth callback debug info:', debug);
         
+        // Log Supabase configuration
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://bxgdijqjdtbgzycvngug.supabase.co';
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        
+        console.log('Auth callback URL:', window.location.href);
+        console.log('Auth callback parameters:', {
+          url: supabaseUrl,
+          hasKey: !!supabaseAnonKey,
+          keyLength: supabaseAnonKey ? supabaseAnonKey.length : 0
+        });
+        
         // First, try to directly exchange the code if it exists in the URL
         if (location.search && location.search.includes('code=')) {
           console.log('Found code in URL, attempting direct exchange...');
@@ -88,7 +100,8 @@ const AuthCallback = () => {
             // For Supabase PKCE flow, we need to explicitly exchange the code for a session
             // This is the most reliable way to handle the callback
             console.log('Attempting to exchange code for session with full URL');
-            await supabase.auth.exchangeCodeForSession(window.location.href);
+            const result = await supabase.auth.exchangeCodeForSession(window.location.href);
+            console.log('Code exchange result:', result);
             
             // After code exchange, check if we have a session
             const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -181,6 +194,7 @@ const AuthCallback = () => {
             return;
           } catch (exchangeError) {
             console.error('Error in code exchange process:', exchangeError);
+            setError(`Error exchanging code: ${exchangeError.message || 'Unknown error'}`);
             // Continue to other methods if code exchange fails
           }
         }
@@ -259,10 +273,12 @@ const AuthCallback = () => {
                   }
                 } catch (apiError) {
                   console.error('Error getting user data from API:', apiError);
+                  setError(`API error: ${apiError.message || 'Unknown error'}`);
                 }
               }
             } catch (userError) {
               console.error('Error getting user data with token:', userError);
+              setError(`User data error: ${userError.message || 'Unknown error'}`);
             }
           }
         }
@@ -280,128 +296,106 @@ const AuthCallback = () => {
             return;
           }
           
-          const session = data.session;
-          
-          if (!session) {
-            console.error('No session found');
-            setError('No valid session found. Please try logging in again.');
+          if (data?.session) {
+            console.log('Found existing session:', data.session);
+            
+            // Set the token for API calls
+            apiClient.setToken(data.session.access_token);
+            
+            // Store tokens in localStorage
+            localStorage.setItem('auth_token', data.session.access_token);
+            localStorage.setItem('refresh_token', data.session.refresh_token);
+            
+            // Get user data
+            const { data: userData, error: userError } = await supabase.auth.getUser();
+            
+            if (userError) {
+              console.error('Error getting user data from session:', userError);
+              setError(`Error getting user data: ${userError.message}`);
+              return;
+            }
+            
+            if (!userData?.user) {
+              console.error('No user data found in session');
+              setError('No user data found. Please try logging in again.');
+              return;
+            }
+            
+            console.log('User data obtained from session:', userData.user);
+            
+            // Update user in context
+            updateUser(userData.user);
+            
+            // Store user data in localStorage
+            localStorage.setItem('user_authenticated', 'true');
+            localStorage.setItem('user_id', userData.user.id);
+            
+            // Redirect to dashboard
+            setStatus('Authentication successful! Redirecting...');
+            setTimeout(() => {
+              navigate('/Dashboard', { replace: true });
+            }, 500);
             return;
           }
           
-          console.log('Session obtained, setting token...');
-          setStatus('Session obtained, getting user profile...');
-          
-          // Set the token for API calls
-          const token = session.access_token;
-          apiClient.setToken(token);
-          
-          // Store tokens in localStorage
-          localStorage.setItem('auth_token', token);
-          localStorage.setItem('refresh_token', session.refresh_token);
-          
-          // Get user data from Supabase
-          const { data: userData, error: userError } = await supabase.auth.getUser();
-          
-          if (userError) {
-            console.error('Error getting user data:', userError);
-            setError(`Error getting user data: ${userError.message}`);
-            return;
-          }
-          
-          if (!userData?.user) {
-            console.error('No user data found');
-            setError('No user data found. Please try logging in again.');
-            return;
-          }
-          
-          console.log('User data obtained:', userData.user);
-          
-          // Update user in context
-          updateUser(userData.user);
-          
-          // Store user data in localStorage
-          localStorage.setItem('user_authenticated', 'true');
-          localStorage.setItem('user_id', userData.user.id);
-          
-          // Redirect to dashboard
-          setStatus('Authentication successful! Redirecting...');
-          setTimeout(() => {
-            navigate('/Dashboard', { replace: true });
-          }, 500);
+          // If we get here, no authentication was found
+          console.log('No authentication found');
+          setError('No authentication found. Please try logging in again.');
         } catch (error) {
           console.error('Error in auth callback:', error);
-          setError(`Authentication error: ${error.message}`);
+          setError(`Authentication error: ${error.message || 'Unknown error'}`);
         }
       } catch (error) {
-        console.error('Error in auth callback:', error);
-        setError(`Authentication error: ${error.message}`);
+        console.error('Unexpected error in auth callback:', error);
+        setError(`Unexpected error: ${error.message || 'Unknown error'}`);
       }
     };
-
+    
     handleCallback();
-  }, [navigate, updateUser, location]);
-
+  }, [location, navigate, updateUser]);
+  
   const handleManualLogin = () => {
-    navigate('/login', { replace: true });
+    navigate('/login');
   };
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-indigo-50 flex flex-col items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">Authentication Error</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <div className="mb-4">
-            <button
-              onClick={handleManualLogin}
-              className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
-            >
-              Back to Login
-            </button>
-          </div>
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen p-4">
+      <div className="w-full max-w-md p-6 bg-white rounded-lg shadow-lg">
+        <h1 className="text-2xl font-bold text-center mb-4">Authentication</h1>
+        
+        <div className="text-center mb-6">
+          <p className="text-gray-700">{status}</p>
           
-          {/* Debug information (hidden in production) */}
-          {import.meta.env.DEV && (
-            <div className="mt-8 text-left border-t pt-4">
-              <h3 className="text-sm font-semibold text-gray-500 mb-2">Debug Information</h3>
-              <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-48">
-                {JSON.stringify(debugInfo, null, 2)}
-              </pre>
+          {error && (
+            <div className="mt-4 p-3 bg-red-100 text-red-700 rounded-md">
+              <p className="font-semibold">Error</p>
+              <p>{error}</p>
             </div>
           )}
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-indigo-50 flex flex-col items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center">
-        <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
-          <svg className="w-8 h-8 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent mb-4">
-          Authenticating
-        </h2>
-        <p className="text-slate-600 mb-4">{status}</p>
-        <div className="flex justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+        
+        <div className="flex flex-col gap-3">
+          {error && (
+            <button
+              onClick={handleManualLogin}
+              className="w-full py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              Go to Login Page
+            </button>
+          )}
+          
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="w-full py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+          >
+            {showDebug ? 'Hide Debug Info' : 'Show Debug Info'}
+          </button>
         </div>
         
-        {/* Debug information (hidden in production) */}
-        {import.meta.env.DEV && (
-          <div className="mt-8 text-left border-t pt-4">
-            <h3 className="text-sm font-semibold text-gray-500 mb-2">Debug Information</h3>
-            <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-48">
-              {JSON.stringify(debugInfo, null, 2)}
-            </pre>
+        {showDebug && (
+          <div className="mt-6 p-4 bg-gray-100 rounded-md text-xs overflow-auto max-h-96">
+            <h3 className="font-semibold mb-2">Debug Information</h3>
+            <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
           </div>
         )}
       </div>

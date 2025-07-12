@@ -11,7 +11,7 @@ const RequireAuth = ({ children }) => {
   const [checkingSupabase, setCheckingSupabase] = useState(false);
   
   // Check if the current route is an auth route that doesn't require authentication
-  const isAuthRoute = ['/login', '/signup', '/auth/callback'].some(route => 
+  const isAuthRoute = ['/login', '/signup', '/auth/callback', '/debug-auth.html'].some(route => 
     location.pathname.toLowerCase().startsWith(route.toLowerCase())
   );
   
@@ -51,7 +51,7 @@ const RequireAuth = ({ children }) => {
       }
       
       // If localStorage says they're authenticated and we have a token, trust it
-      if (isAuthenticatedInStorage && hasAuthToken) {
+      if (isAuthenticatedInStorage && (hasAuthToken || hasSupabaseSession)) {
         console.log('RequireAuth - User authenticated according to localStorage');
         setIsAuth(true);
         setAuthChecked(true);
@@ -86,6 +86,22 @@ const RequireAuth = ({ children }) => {
         } finally {
           setCheckingSupabase(false);
         }
+      }
+      
+      // Direct check of localStorage for a session
+      try {
+        const sessionStr = localStorage.getItem('supabase.auth.token');
+        if (sessionStr) {
+          const sessionData = JSON.parse(sessionStr);
+          if (sessionData && sessionData.access_token) {
+            console.log('RequireAuth - Found valid session data in localStorage');
+            setIsAuth(true);
+            setAuthChecked(true);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('RequireAuth - Error parsing session from localStorage:', error);
       }
       
       // If we're not loading and none of the above conditions are met, user is not authenticated

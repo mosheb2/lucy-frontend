@@ -100,8 +100,47 @@ const AuthCallback = () => {
             // For Supabase PKCE flow, we need to explicitly exchange the code for a session
             // This is the most reliable way to handle the callback
             console.log('Attempting to exchange code for session with full URL');
-            const result = await supabase.auth.exchangeCodeForSession(window.location.href);
-            console.log('Code exchange result:', result);
+            
+            // Extract the code from the URL for debugging
+            const urlParams = new URLSearchParams(location.search);
+            const code = urlParams.get('code');
+            console.log('Code from URL:', code);
+            
+            // Try the code exchange with explicit error handling
+            try {
+              const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+              
+              if (exchangeError) {
+                console.error('Error in code exchange:', exchangeError);
+                setError(`Code exchange error: ${exchangeError.message}`);
+                
+                // Log additional debug info
+                console.log('Code exchange debug info:', {
+                  code,
+                  fullUrl: window.location.href,
+                  error: exchangeError
+                });
+                
+                // Try alternate method with full URL
+                console.log('Trying alternate method with full URL...');
+                const { data: altExchangeData, error: altExchangeError } = await supabase.auth.exchangeCodeForSession(window.location.href);
+                
+                if (altExchangeError) {
+                  console.error('Error in alternate code exchange:', altExchangeError);
+                  setError(`Alternate code exchange error: ${altExchangeError.message}`);
+                  return;
+                }
+                
+                console.log('Alternate code exchange successful:', altExchangeData);
+              } else {
+                console.log('Code exchange successful:', exchangeData);
+              }
+            } catch (directExchangeError) {
+              console.error('Exception during code exchange:', directExchangeError);
+              setError(`Exception during code exchange: ${directExchangeError.message}`);
+              
+              // Continue to try other methods
+            }
             
             // After code exchange, check if we have a session
             const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -123,7 +162,7 @@ const AuthCallback = () => {
             }
             
             if (!sessionData?.session) {
-              console.error('No session found after code exchange');
+              console.error('No session found after code exchange and this the debug info:', debug);
               setError('No valid session found. Please try logging in again.');
               return;
             }

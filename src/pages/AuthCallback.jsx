@@ -30,75 +30,74 @@ const AuthCallback = () => {
         setDebugInfo(debug);
         console.log('Auth callback debug info:', debug);
 
-        // The session should be automatically handled by Supabase
-        // when detectSessionInUrl is true in the client config
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // Wait a moment to let Supabase's automatic session detection work
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-        if (sessionError) {
-          console.error('Error getting session:', sessionError);
-          setError(`Authentication error: ${sessionError.message}`);
-          return;
-        }
-
-        if (!session) {
-          // If no session found, try to exchange the code in the URL
-          if (window.location.search.includes('code=')) {
-            const params = new URLSearchParams(window.location.search);
-            const code = params.get('code');
+        // Check if we have a session after the automatic handling
+        const { data: sessionData } = await supabase.auth.getSession();
+        
+        if (sessionData?.session) {
+          console.log('Session detected automatically');
+          
+          // Get user data
+          const { data: userData } = await supabase.auth.getUser();
+          
+          if (userData?.user) {
+            console.log('User found:', userData.user.id);
+            updateUser(userData.user);
             
-            try {
-              console.log('Attempting to exchange code for session');
-              const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-              
-              if (exchangeError) {
-                console.error('Error exchanging code for session:', exchangeError);
-                setError(`Authentication error: ${exchangeError.message}`);
-                return;
-              }
-              
-              if (!data.session) {
-                setError('No session returned from code exchange');
-                return;
-              }
-              
-              // Update the user in context
-              if (data.user) {
-                updateUser(data.user);
-              }
-              
-              // Redirect to dashboard
-              navigate('/Dashboard', { replace: true });
-              return;
-            } catch (exchangeError) {
-              console.error('Exception during code exchange:', exchangeError);
-              setError(`Authentication error: ${exchangeError.message}`);
-              return;
-            }
-          } else {
-            setError('No authentication session found');
+            // Redirect to dashboard
+            navigate('/Dashboard', { replace: true });
             return;
           }
         }
         
-        // If we have a session, get the user
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        
-        if (userError) {
-          console.error('Error getting user:', userError);
-          setError(`Authentication error: ${userError.message}`);
-          return;
+        // If no session was automatically detected, try manual code exchange
+        if (window.location.search && window.location.search.includes('code=')) {
+          const params = new URLSearchParams(window.location.search);
+          const code = params.get('code');
+          
+          if (code) {
+            console.log('Attempting manual code exchange');
+            
+            try {
+              // Clear any existing session data first
+              localStorage.removeItem('supabase.auth.token');
+              
+              // Try the code exchange
+              const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+              
+              if (exchangeError) {
+                console.error('Error exchanging code:', exchangeError);
+                setError(`Authentication error: ${exchangeError.message}`);
+                return;
+              }
+              
+              if (data?.session) {
+                console.log('Code exchange successful');
+                
+                // Get user data
+                const { data: userData } = await supabase.auth.getUser();
+                
+                if (userData?.user) {
+                  console.log('User found after code exchange:', userData.user.id);
+                  updateUser(userData.user);
+                  
+                  // Redirect to dashboard
+                  navigate('/Dashboard', { replace: true });
+                  return;
+                }
+              } else {
+                setError('No session returned from code exchange');
+              }
+            } catch (exchangeError) {
+              console.error('Exception during code exchange:', exchangeError);
+              setError(`Authentication error: ${exchangeError.message}`);
+            }
+          }
+        } else {
+          setError('No authentication code found in URL');
         }
-        
-        if (!user) {
-          setError('No user found in session');
-          return;
-        }
-        
-        // Update the user in context
-        updateUser(user);
-        
-        // Redirect to dashboard
-        navigate('/Dashboard', { replace: true });
       } catch (error) {
         console.error('Error in auth callback:', error);
         setError(`Authentication error: ${error.message}`);
@@ -111,7 +110,15 @@ const AuthCallback = () => {
   }, [navigate, updateUser]);
 
   const handleReturnToLogin = () => {
+    // Clear any potentially corrupted auth state
+    localStorage.removeItem('supabase.auth.token');
     navigate('/Login', { replace: true });
+  };
+
+  const handleClearAndRetry = () => {
+    // Clear localStorage and reload
+    localStorage.clear();
+    window.location.reload();
   };
 
   if (loading) {
@@ -121,6 +128,14 @@ const AuthCallback = () => {
           <Loader2 className="w-12 h-12 animate-spin text-purple-600 mx-auto mb-4" />
           <h1 className="text-2xl font-bold mb-2">Processing Login</h1>
           <p className="text-gray-600 mb-4">Please wait while we complete your authentication...</p>
+          
+          <Button
+            variant="outline"
+            onClick={handleClearAndRetry}
+            className="mt-4"
+          >
+            Clear and Retry
+          </Button>
         </div>
       </div>
     );
@@ -137,12 +152,21 @@ const AuthCallback = () => {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
           
-          <Button 
-            onClick={handleReturnToLogin}
-            className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white"
-          >
-            Return to Login
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button 
+              onClick={handleReturnToLogin}
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white"
+            >
+              Return to Login
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={handleClearAndRetry}
+            >
+              Clear and Retry
+            </Button>
+          </div>
         </div>
         
         {showDebug && (

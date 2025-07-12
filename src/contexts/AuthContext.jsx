@@ -25,9 +25,30 @@ export const AuthProvider = ({ children }) => {
     const loadingTimeout = setTimeout(() => {
       if (loading) {
         console.log('Auth loading timeout reached');
+        
+        // Check if we have a session in localStorage before giving up
+        try {
+          const sessionStr = localStorage.getItem('supabase.auth.token');
+          if (sessionStr) {
+            const sessionData = JSON.parse(sessionStr);
+            if (sessionData && sessionData.user) {
+              console.log('Found user data in localStorage, using it');
+              setUser(sessionData.user);
+              setSession({
+                access_token: sessionData.access_token,
+                refresh_token: sessionData.refresh_token,
+                expires_at: sessionData.expires_at,
+                user: sessionData.user
+              });
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing session from localStorage:', e);
+        }
+        
         setLoading(false);
       }
-    }, 15000); // 15 seconds timeout
+    }, 10000); // 10 seconds timeout
 
     // Function to get the current session and user
     const initializeAuth = async () => {
@@ -40,6 +61,27 @@ export const AuthProvider = ({ children }) => {
         if (sessionError) {
           console.error('Error getting session:', sessionError);
           setError(sessionError.message);
+          
+          // Try to get session from localStorage as fallback
+          try {
+            const sessionStr = localStorage.getItem('supabase.auth.token');
+            if (sessionStr) {
+              const sessionData = JSON.parse(sessionStr);
+              if (sessionData && sessionData.user) {
+                console.log('Using session from localStorage as fallback');
+                setUser(sessionData.user);
+                setSession({
+                  access_token: sessionData.access_token,
+                  refresh_token: sessionData.refresh_token,
+                  expires_at: sessionData.expires_at,
+                  user: sessionData.user
+                });
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing session from localStorage:', e);
+          }
+          
           setLoading(false);
           return;
         }
@@ -56,6 +98,26 @@ export const AuthProvider = ({ children }) => {
             setError(userError.message);
           } else if (userData?.user) {
             setUser(userData.user);
+          }
+        } else {
+          // Try to get session from localStorage as fallback
+          try {
+            const sessionStr = localStorage.getItem('supabase.auth.token');
+            if (sessionStr) {
+              const sessionData = JSON.parse(sessionStr);
+              if (sessionData && sessionData.user) {
+                console.log('Using session from localStorage as fallback');
+                setUser(sessionData.user);
+                setSession({
+                  access_token: sessionData.access_token,
+                  refresh_token: sessionData.refresh_token,
+                  expires_at: sessionData.expires_at,
+                  user: sessionData.user
+                });
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing session from localStorage:', e);
           }
         }
         

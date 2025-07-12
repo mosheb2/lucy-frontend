@@ -19,6 +19,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
+// Log when the client is initialized
+console.log('Using unified Supabase client from supabase-auth-fixed.js');
+
 // Simplified auth functions that follow Supabase best practices
 export const auth = {
   // Get current session
@@ -99,7 +102,8 @@ export const auth = {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: mappedProvider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`
+          redirectTo: `${window.location.origin}/auth/callback`,
+          skipBrowserRedirect: false
         }
       });
       

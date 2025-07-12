@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auth Debug Tool</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/dist/umd/supabase.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #4f46e5;
+    }
+    h2 {
+      color: #6366f1;
+      margin-top: 30px;
+    }
+    .card {
+      background-color: #f9fafb;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    button {
+      background-color: #4f46e5;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background-color: #4338ca;
+    }
+    button.secondary {
+      background-color: #9ca3af;
+    }
+    button.secondary:hover {
+      background-color: #6b7280;
+    }
+    button.danger {
+      background-color: #ef4444;
+    }
+    button.danger:hover {
+      background-color: #dc2626;
+    }
+    pre {
+      background-color: #f3f4f6;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .status {
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    .status.success {
+      background-color: #d1fae5;
+      color: #065f46;
+    }
+    .status.error {
+      background-color: #fee2e2;
+      color: #b91c1c;
+    }
+    .status.info {
+      background-color: #e0f2fe;
+      color: #0369a1;
+    }
+    .input-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Supabase Auth Debug Tool</h1>
+  
+  <div id="status" class="status info">
+    Initializing...
+  </div>
+  
+  <div class="actions">
+    <button id="checkSession">Check Current Session</button>
+    <button id="getUser">Get Current User</button>
+    <button id="clearStorage" class="danger">Clear Local Storage</button>
+    <button id="goToDashboard">Go to Dashboard</button>
+    <button id="goToLogin">Go to Login</button>
+  </div>
+  
+  <h2>Manual Code Exchange</h2>
+  <div class="card">
+    <div class="input-group">
+      <label for="codeInput">Auth Code:</label>
+      <input type="text" id="codeInput" placeholder="Paste auth code here">
+    </div>
+    <button id="exchangeCode">Exchange Code for Session</button>
+  </div>
+  
+  <h2>URL Information</h2>
+  <div class="card">
+    <pre id="urlInfo"></pre>
+  </div>
+  
+  <h2>Local Storage</h2>
+  <div class="card">
+    <button id="refreshStorage" class="secondary">Refresh Storage View</button>
+    <pre id="storageInfo"></pre>
+  </div>
+  
+  <h2>Session Information</h2>
+  <div class="card">
+    <pre id="sessionInfo">No session information available yet.</pre>
+  </div>
+  
+  <h2>User Information</h2>
+  <div class="card">
+    <pre id="userInfo">No user information available yet.</pre>
+  </div>
+  
+  <script>
+    // Supabase configuration
+    const SUPABASE_URL = 'https://bxgdijqjdtbgzycvngug.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.axSb9Ew1TelVzo-4EsbWO8vxYjuU_0FAxWMpbWrgfIw';
+    
+    // Create Supabase client
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+        storage: localStorage,
+        storageKey: 'supabase.auth.token'
+      }
+    });
+    
+    // DOM elements
+    const statusEl = document.getElementById('status');
+    const urlInfoEl = document.getElementById('urlInfo');
+    const storageInfoEl = document.getElementById('storageInfo');
+    const sessionInfoEl = document.getElementById('sessionInfo');
+    const userInfoEl = document.getElementById('userInfo');
+    const codeInputEl = document.getElementById('codeInput');
+    
+    // Helper functions
+    function setStatus(message, type = 'info') {
+      statusEl.className = `status ${type}`;
+      statusEl.textContent = message;
+    }
+    
+    function displayObject(element, obj) {
+      element.textContent = JSON.stringify(obj, null, 2);
+    }
+    
+    function updateStorageInfo() {
+      const storage = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        try {
+          storage[key] = JSON.parse(localStorage.getItem(key));
+        } catch (e) {
+          storage[key] = localStorage.getItem(key);
+        }
+      }
+      displayObject(storageInfoEl, storage);
+    }
+    
+    // Initialize
+    function init() {
+      // Display URL info
+      const urlInfo = {
+        href: window.location.href,
+        origin: window.location.origin,
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hash: window.location.hash
+      };
+      displayObject(urlInfoEl, urlInfo);
+      
+      // Check for code in URL
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      if (code) {
+        codeInputEl.value = code;
+        setStatus('Auth code found in URL. You can exchange it for a session.', 'info');
+      }
+      
+      // Update storage info
+      updateStorageInfo();
+      
+      // Check for existing session
+      checkSession();
+      
+      setStatus('Debug tool initialized', 'info');
+    }
+    
+    // Check session
+    async function checkSession() {
+      try {
+        setStatus('Checking session...', 'info');
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          setStatus(`Session error: ${error.message}`, 'error');
+          displayObject(sessionInfoEl, { error: error.message });
+          return;
+        }
+        
+        if (data?.session) {
+          setStatus('Active session found', 'success');
+          displayObject(sessionInfoEl, data.session);
+          
+          // Also get user info
+          getUser();
+        } else {
+          setStatus('No active session found', 'info');
+          displayObject(sessionInfoEl, { message: 'No active session' });
+        }
+      } catch (error) {
+        setStatus(`Error checking session: ${error.message}`, 'error');
+        displayObject(sessionInfoEl, { error: error.message });
+      }
+    }
+    
+    // Get user
+    async function getUser() {
+      try {
+        setStatus('Getting user...', 'info');
+        const { data, error } = await supabase.auth.getUser();
+        
+        if (error) {
+          setStatus(`User error: ${error.message}`, 'error');
+          displayObject(userInfoEl, { error: error.message });
+          return;
+        }
+        
+        if (data?.user) {
+          setStatus('User found', 'success');
+          displayObject(userInfoEl, data.user);
+        } else {
+          setStatus('No user found', 'info');
+          displayObject(userInfoEl, { message: 'No user data' });
+        }
+      } catch (error) {
+        setStatus(`Error getting user: ${error.message}`, 'error');
+        displayObject(userInfoEl, { error: error.message });
+      }
+    }
+    
+    // Exchange code for session
+    async function exchangeCode() {
+      const code = codeInputEl.value.trim();
+      
+      if (!code) {
+        setStatus('Please enter an auth code', 'error');
+        return;
+      }
+      
+      try {
+        setStatus('Exchanging code for session...', 'info');
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        
+        if (error) {
+          setStatus(`Code exchange error: ${error.message}`, 'error');
+          return;
+        }
+        
+        if (data?.session) {
+          setStatus('Successfully exchanged code for session', 'success');
+          displayObject(sessionInfoEl, data.session);
+          
+          // Update storage view
+          updateStorageInfo();
+          
+          // Also get user info
+          getUser();
+        } else {
+          setStatus('No session returned from code exchange', 'error');
+        }
+      } catch (error) {
+        setStatus(`Error exchanging code: ${error.message}`, 'error');
+      }
+    }
+    
+    // Clear storage
+    function clearStorage() {
+      localStorage.clear();
+      updateStorageInfo();
+      sessionInfoEl.textContent = 'No session information available yet.';
+      userInfoEl.textContent = 'No user information available yet.';
+      setStatus('Local storage cleared', 'info');
+    }
+    
+    // Event listeners
+    document.getElementById('checkSession').addEventListener('click', checkSession);
+    document.getElementById('getUser').addEventListener('click', getUser);
+    document.getElementById('clearStorage').addEventListener('click', clearStorage);
+    document.getElementById('exchangeCode').addEventListener('click', exchangeCode);
+    document.getElementById('refreshStorage').addEventListener('click', updateStorageInfo);
+    document.getElementById('goToDashboard').addEventListener('click', () => window.location.href = '/Dashboard');
+    document.getElementById('goToLogin').addEventListener('click', () => window.location.href = '/Login');
+    
+    // Initialize
+    init();
+    
+    // Listen for auth state changes
+    supabase.auth.onAuthStateChange((event, session) => {
+      setStatus(`Auth state changed: ${event}`, 'info');
+      if (session) {
+        displayObject(sessionInfoEl, session);
+      }
+      updateStorageInfo();
+    });
+  </script>
+</body>
+</html> 

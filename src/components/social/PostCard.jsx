@@ -20,6 +20,8 @@ import {
 import ActionButton from '../ActionButton';
 
 const AttachedTrack = ({ track }) => {
+    if (!track) return null;
+    
     return (
         <div className="mt-3 flex items-center gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
             <img src={track.cover_art_url} alt={track.title} className="w-16 h-16 rounded-md object-cover" />
@@ -58,8 +60,8 @@ const QuotedPost = ({ originalPost }) => {
                     <AvatarImage src={originalPost.author_avatar_url} />
                     <AvatarFallback className="text-xs">{getInitials(originalPost.author_name)}</AvatarFallback>
                 </Avatar>
-                <Link to={createPageUrl(`Artist?id=${originalPost.author_id}`)} className="font-semibold text-sm text-slate-800 hover:underline">
-                    {originalPost.author_name}
+                <Link to={createPageUrl(`Artist?id=${originalPost.author_id || ''}`)} className="font-semibold text-sm text-slate-800 hover:underline">
+                    {originalPost.author_name || 'Unknown Artist'}
                 </Link>
                 <span className="text-xs text-slate-500">• {formatTimeAgo(originalPost.created_date)}</span>
             </div>
@@ -70,17 +72,20 @@ const QuotedPost = ({ originalPost }) => {
 }
 
 export default function PostCard({ post, currentUser }) {
+  // Safety check - if post is undefined, render nothing
+  if (!post) return null;
+  
   const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(post.likes || 0);
+  const [likeCount, setLikeCount] = useState(post?.likes || 0);
   const [likeRecord, setLikeRecord] = useState(null);
-  const [shareCount, setShareCount] = useState(post.shares || 0);
+  const [shareCount, setShareCount] = useState(post?.shares || 0);
   const [isSaved, setIsSaved] = useState(false);
   const [savedRecord, setSavedRecord] = useState(null);
   const [isRepostModalOpen, setIsRepostModalOpen] = useState(false);
   const [repostComment, setRepostComment] = useState("");
   
   const [comments, setComments] = useState([]);
-  const [commentCount, setCommentCount] = useState(post.comments || 0);
+  const [commentCount, setCommentCount] = useState(post?.comments || 0);
   const [newComment, setNewComment] = useState('');
   const [showComments, setShowComments] = useState(false);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
@@ -91,8 +96,11 @@ export default function PostCard({ post, currentUser }) {
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isLoadingTrack, setIsLoadingTrack] = useState(false);
 
+  const postId = post?.id;
+  const authorId = post?.author_id;
+
   const checkIfLiked = useCallback(async () => {
-    if (!currentUser) {
+    if (!currentUser || !postId) {
         setIsCheckingLike(false);
         return;
     }
@@ -100,11 +108,11 @@ export default function PostCard({ post, currentUser }) {
     try {
       const likeCheck = await Like.filter({
         user_id: currentUser.id,
-        target_id: post.id,
+        target_id: postId,
         target_type: 'post'
       });
       
-      if (likeCheck.length > 0) {
+      if (likeCheck && likeCheck.length > 0) {
         setIsLiked(true);
         setLikeRecord(likeCheck[0]);
       }
@@ -113,17 +121,17 @@ export default function PostCard({ post, currentUser }) {
     } finally {
       setIsCheckingLike(false);
     }
-  }, [currentUser, post.id]);
+  }, [currentUser, postId]);
 
   const checkIfSaved = useCallback(async () => {
-    if (!currentUser) {
+    if (!currentUser || !postId) {
         setIsCheckingSave(false);
         return;
     }
     setIsCheckingSave(true);
     try {
-        const saved = await SavedPost.filter({ user_id: currentUser.id, post_id: post.id });
-        if (saved.length > 0) {
+        const saved = await SavedPost.filter({ user_id: currentUser.id, post_id: postId });
+        if (saved && saved.length > 0) {
             setIsSaved(true);
             setSavedRecord(saved[0]);
         }
@@ -132,13 +140,13 @@ export default function PostCard({ post, currentUser }) {
     } finally {
         setIsCheckingSave(false);
     }
-  }, [currentUser, post.id]);
+  }, [currentUser, postId]);
 
   useEffect(() => {
     let mounted = true;
     
     const initializeStatus = async () => {
-      if (mounted && currentUser) {
+      if (mounted && currentUser && postId) {
         await checkIfLiked();
         await checkIfSaved();
       } else {
@@ -152,24 +160,24 @@ export default function PostCard({ post, currentUser }) {
     return () => {
       mounted = false;
     };
-  }, [currentUser, post.id, checkIfLiked, checkIfSaved]);
+  }, [currentUser, postId, checkIfLiked, checkIfSaved]);
 
   const loadComments = useCallback(async () => {
-    if (isLoadingComments) return;
+    if (isLoadingComments || !postId) return;
     
     setIsLoadingComments(true);
     try {
-      const postComments = await Comment.filter({ post_id: post.id }, "-created_date", 10);
-      setComments(postComments);
+      const postComments = await Comment.filter({ post_id: postId }, "-created_date", 10);
+      setComments(postComments || []);
     } catch (error) {
       console.error("Error loading comments:", error);
     } finally {
       setIsLoadingComments(false);
     }
-  }, [post.id, isLoadingComments]);
+  }, [postId, isLoadingComments]);
 
   const loadTrack = useCallback(async () => {
-    if (!post.track_id || isLoadingTrack || attachedTrack) return;
+    if (!post?.track_id || isLoadingTrack || attachedTrack) return;
     
     setIsLoadingTrack(true);
     try {
@@ -180,43 +188,43 @@ export default function PostCard({ post, currentUser }) {
     } finally {
       setIsLoadingTrack(false);
     }
-  }, [post.track_id, isLoadingTrack, attachedTrack]);
+  }, [post?.track_id, isLoadingTrack, attachedTrack]);
 
   useEffect(() => {
-    if (post.track_id) {
+    if (post?.track_id) {
       loadTrack();
     }
-  }, [post.track_id, loadTrack]);
+  }, [post?.track_id, loadTrack]);
 
   const handleLikeToggle = async () => {
-    if (!currentUser) return;
+    if (!currentUser || !postId) return;
     
     const wasLiked = isLiked;
     setIsLiked(!wasLiked);
     setLikeCount(wasLiked ? likeCount - 1 : likeCount + 1);
     
     try {
-      if (wasLiked && likeRecord) {
+      if (wasLiked && likeRecord?.id) {
         await Like.delete(likeRecord.id);
         setLikeRecord(null);
       } else if (!wasLiked) {
         const newLike = await Like.create({
           user_id: currentUser.id,
-          target_id: post.id,
+          target_id: postId,
           target_type: 'post'
         });
         setLikeRecord(newLike);
 
-        if (currentUser.id !== post.author_id) {
+        if (currentUser.id !== authorId) {
           try {
             await Notification.create({
-              user_id: post.author_id,
+              user_id: authorId,
               type: 'like',
               message: `liked your post.`,
               from_user_id: currentUser.id,
-              from_user_name: currentUser.artist_name || currentUser.full_name,
-              from_user_avatar: currentUser.profile_image_url,
-              target_id: post.id,
+              from_user_name: currentUser.artist_name || currentUser.full_name || '',
+              from_user_avatar: currentUser.profile_image_url || '',
+              target_id: postId,
               action_url: createPageUrl(`Artist?id=${currentUser.id}`)
             });
           } catch (notifError) {

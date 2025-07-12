@@ -7,44 +7,48 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui/button';
 
+// Default fallback data
+const DEFAULT_INSIGHTS = {
+    growthInsight: "### Keep Growing! 📈\nYour music is gaining traction. Focus on consistent posting and engaging with your audience to maintain momentum.",
+    youtubeIdeas: [
+        { title: "Behind The Beat", description: "Show your creative process making a beat." },
+        { title: "30 Second Cover", description: "Quick acoustic version of your latest track." },
+    ]
+};
+
 export default function GrowthHub({ user }) {
-    const [insights, setInsights] = useState(null);
+    const [insights, setInsights] = useState(DEFAULT_INSIGHTS);
     const [loading, setLoading] = useState(true);
 
     const fetchInsights = async () => {
         setLoading(true);
         try {
             const response = await getAIInsights();
-            if (response.success) {
-                setInsights(response);
+            if (response && response.success) {
+                // Make sure we have valid data before setting state
+                if (response.growthInsight && response.youtubeIdeas) {
+                    setInsights(response);
+                } else {
+                    console.warn("Received incomplete insights data, using fallback");
+                    setInsights(DEFAULT_INSIGHTS);
+                }
             } else {
-                // Use fallback data from the function if the main call fails
-                setInsights({
-                    growthInsight: "### Keep Growing! 📈\nYour music is gaining traction. Focus on consistent posting and engaging with your audience to maintain momentum.",
-                    youtubeIdeas: [
-                        { title: "Behind The Beat", description: "Show your creative process making a beat." },
-                        { title: "30 Second Cover", description: "Quick acoustic version of your latest track." },
-                    ]
-                });
+                // Use fallback data if the API call fails
+                console.warn("API call unsuccessful, using fallback data");
+                setInsights(DEFAULT_INSIGHTS);
             }
         } catch (error) {
             console.error("Failed to fetch AI insights:", error);
-            setInsights({
-                 growthInsight: "### Manual Tip ✨\nEngage with 5 comments on your latest YouTube video to boost its visibility!",
-                 youtubeIdeas: [
-                    { title: "Day in the Life", description: "A vlog showing your daily routine as an artist." },
-                 ]
-            })
+            setInsights(DEFAULT_INSIGHTS);
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        if (user) {
-            fetchInsights();
-        }
-    }, [user]);
+        // Fetch insights regardless of user state to avoid dependency issues
+        fetchInsights();
+    }, []);
 
     const renderLoadingState = () => (
         <div className="p-8 text-center">
@@ -52,6 +56,10 @@ export default function GrowthHub({ user }) {
             <p className="mt-2 text-sm text-slate-600">Our AI is analyzing your data...</p>
         </div>
     );
+
+    // Safely access insights properties with fallbacks
+    const growthInsight = insights?.growthInsight || DEFAULT_INSIGHTS.growthInsight;
+    const youtubeIdeas = insights?.youtubeIdeas || DEFAULT_INSIGHTS.youtubeIdeas;
 
     return (
         <StudioPanel className="p-0 overflow-hidden">
@@ -75,16 +83,16 @@ export default function GrowthHub({ user }) {
                     </TabsList>
                     <TabsContent value="insights" className="p-4 sm:p-6">
                         <div className="prose prose-sm prose-slate max-w-none">
-                            <ReactMarkdown>{insights.growthInsight}</ReactMarkdown>
+                            <ReactMarkdown>{growthInsight}</ReactMarkdown>
                         </div>
                         <Button variant="ghost" size="sm" className="mt-4 text-purple-600 px-0 hover:bg-transparent">Get New Tip</Button>
                     </TabsContent>
                     <TabsContent value="ideas" className="p-4 sm:p-6">
                          <div className="space-y-3">
-                            {insights.youtubeIdeas && insights.youtubeIdeas.slice(0, 2).map((idea, index) => (
+                            {Array.isArray(youtubeIdeas) && youtubeIdeas.slice(0, 2).map((idea, index) => (
                                 <div key={index} className="p-3 bg-slate-50 rounded-lg border border-slate-200/80">
-                                    <p className="font-semibold text-sm text-slate-800">{idea.title}</p>
-                                    <p className="text-xs text-slate-600">{idea.description}</p>
+                                    <p className="font-semibold text-sm text-slate-800">{idea?.title || "Content Idea"}</p>
+                                    <p className="text-xs text-slate-600">{idea?.description || "Create engaging content for your audience."}</p>
                                 </div>
                             ))}
                          </div>

@@ -86,6 +86,7 @@ const ICON_MAP = {
   distribute: Globe,
   copyright: Shield,
   lightning: Zap,
+  zap: Zap,
   target: Target,
   send: Send,
   flag: Flag,

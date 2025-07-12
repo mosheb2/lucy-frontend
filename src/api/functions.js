@@ -6,7 +6,15 @@ export const getCreatorAnalytics = async (period = '30d') => {
 };
 
 export const getAIInsights = async (data) => {
-  return apiClient.post('/base44/ai-insights', { data });
+  // Return mock data instead of making an API call
+  return {
+    success: true,
+    growthInsight: "### Keep Growing! 📈\nYour music is gaining traction. Focus on consistent posting and engaging with your audience to maintain momentum.",
+    youtubeIdeas: [
+      { title: "Behind The Beat", description: "Show your creative process making a beat." },
+      { title: "30 Second Cover", description: "Quick acoustic version of your latest track." },
+    ]
+  };
 };
 
 export const generateSmartContent = async (prompt) => {

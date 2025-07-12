@@ -101,7 +101,7 @@ export default function Dashboard() {
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <ActivityFeed />
+          <ActivityFeed user={displayUser} />
         </div>
         <div>
           <TaskList />
@@ -109,7 +109,7 @@ export default function Dashboard() {
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <GrowthHub />
+        <GrowthHub user={displayUser} />
         <ProServices />
       </div>
       

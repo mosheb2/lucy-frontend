@@ -3,8 +3,8 @@ const BACKEND_URL = 'https://api.lucysounds.com/api';
 
 console.log('API client initialized with base URL:', API_BASE_URL);
 
-// Import supabase at the top level to avoid dynamic import issues
-import { supabase } from './supabase-auth';
+// Import the fixed supabase client
+import { supabase } from './supabase-auth-fixed';
 
 class ApiClient {
   constructor() {
@@ -22,6 +22,13 @@ class ApiClient {
       localStorage.removeItem('auth_token');
       console.log('Token removed from localStorage');
     }
+  }
+
+  clearToken() {
+    console.log('Clearing token');
+    this.token = null;
+    localStorage.removeItem('auth_token');
+    console.log('Token removed from localStorage');
   }
 
   getHeaders() {
@@ -70,7 +77,7 @@ class ApiClient {
           } catch (refreshError) {
             console.error('Failed to refresh token:', refreshError);
             // Clear auth data on refresh failure
-            this.setToken(null);
+            this.clearToken();
             localStorage.removeItem('refresh_token');
             localStorage.removeItem('user_authenticated');
             localStorage.removeItem('user_id');
@@ -180,12 +187,12 @@ class ApiClient {
         console.error('Backend signout error (ignoring):', backendError);
       }
       
-      this.setToken(null);
+      this.clearToken();
       return { success: true };
     } catch (error) {
       console.error('Signout error:', error);
       // Even if there's an error, clear the token
-      this.setToken(null);
+      this.clearToken();
       throw error;
     }
   }
@@ -215,8 +222,7 @@ class ApiClient {
     console.log('Attempting to refresh token');
     
     try {
-      // First try with Supabase directly
-      const { supabase } = await import('@/api/supabase-auth');
+      // Use the imported supabase instance directly
       const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
       
       if (error) {
@@ -258,12 +264,9 @@ class ApiClient {
         console.log('No access token found in Supabase refresh response');
       }
       
-      return {
-        user: data.user,
-        session: data.session
-      };
+      return data;
     } catch (error) {
-      console.error('Token refresh failed:', error);
+      console.error('Refresh token error:', error);
       throw error;
     }
   }

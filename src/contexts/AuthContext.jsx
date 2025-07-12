@@ -35,7 +35,7 @@ export const AuthProvider = ({ children }) => {
         console.log('Initializing auth...');
         
         // Get the current session
-        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+        const { data, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
           console.error('Error getting session:', sessionError);
@@ -44,65 +44,25 @@ export const AuthProvider = ({ children }) => {
           return;
         }
         
-        // If we have a session, get the user
-        if (currentSession) {
-          console.log('Session found, getting user...');
-          setSession(currentSession);
+        // If we have a session, set it and get the user
+        if (data?.session) {
+          setSession(data.session);
           
-          const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+          // Get user data
+          const { data: userData, error: userError } = await supabase.auth.getUser();
           
           if (userError) {
             console.error('Error getting user:', userError);
             setError(userError.message);
-            setLoading(false);
-            return;
+          } else if (userData?.user) {
+            setUser(userData.user);
           }
-          
-          if (currentUser) {
-            console.log('User found:', currentUser.id);
-            
-            // Get user profile data from the profiles table
-            try {
-              const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', currentUser.id)
-                .single();
-              
-              if (profileError && profileError.code !== 'PGRST116') {
-                console.error('Error getting profile:', profileError);
-              }
-              
-              // Combine auth user with profile data
-              const userWithProfile = {
-                ...currentUser,
-                ...profileData,
-                // Ensure these fields are available with fallbacks
-                full_name: profileData?.full_name || currentUser.user_metadata?.full_name,
-                username: profileData?.username || currentUser.user_metadata?.username,
-                avatar_url: profileData?.avatar_url,
-                role: profileData?.role || 'user'
-              };
-              
-              setUser(userWithProfile);
-            } catch (profileError) {
-              console.error('Exception getting profile:', profileError);
-              // Still set the user even if profile fetch fails
-              setUser(currentUser);
-            }
-          } else {
-            console.log('No user found despite having a session');
-            setUser(null);
-          }
-        } else {
-          console.log('No session found');
-          setUser(null);
-          setSession(null);
         }
+        
+        setLoading(false);
       } catch (error) {
-        console.error('Exception in initializeAuth:', error);
+        console.error('Error in initializeAuth:', error);
         setError(error.message);
-      } finally {
         setLoading(false);
       }
     };
@@ -112,56 +72,22 @@ export const AuthProvider = ({ children }) => {
       async (event, currentSession) => {
         console.log('Auth state changed:', event);
         
-        setSession(currentSession);
-        
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          setSession(currentSession);
+          
           if (currentSession) {
-            try {
-              // Get user data
-              const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
-              
-              if (userError) {
-                console.error('Error getting user after auth change:', userError);
-                return;
-              }
-              
-              if (currentUser) {
-                // Get user profile data
-                try {
-                  const { data: profileData, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', currentUser.id)
-                    .single();
-                  
-                  if (profileError && profileError.code !== 'PGRST116') {
-                    console.error('Error getting profile after auth change:', profileError);
-                  }
-                  
-                  // Combine auth user with profile data
-                  const userWithProfile = {
-                    ...currentUser,
-                    ...profileData,
-                    // Ensure these fields are available with fallbacks
-                    full_name: profileData?.full_name || currentUser.user_metadata?.full_name,
-                    username: profileData?.username || currentUser.user_metadata?.username,
-                    avatar_url: profileData?.avatar_url,
-                    role: profileData?.role || 'user'
-                  };
-                  
-                  setUser(userWithProfile);
-                } catch (profileError) {
-                  console.error('Exception getting profile after auth change:', profileError);
-                  // Still set the user even if profile fetch fails
-                  setUser(currentUser);
-                }
-              }
-            } catch (error) {
-              console.error('Exception handling auth state change:', error);
+            // Get user data
+            const { data, error } = await supabase.auth.getUser();
+            
+            if (error) {
+              console.error('Error getting user after auth change:', error);
+            } else if (data?.user) {
+              setUser(data.user);
             }
           }
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
+          setSession(null);
         }
       }
     );
@@ -268,25 +194,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Reset password
-  const resetPassword = async (email) => {
-    try {
-      setError(null);
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`
-      });
-      
-      if (error) {
-        setError(error.message);
-        throw error;
-      }
-    } catch (error) {
-      console.error('Error in resetPassword:', error);
-      setError(error.message);
-      throw error;
-    }
-  };
-
   // Update user
   const updateUser = (userData) => {
     setUser(userData);
@@ -302,7 +209,6 @@ export const AuthProvider = ({ children }) => {
     signUp,
     signOut,
     signInWithOAuth,
-    resetPassword,
     updateUser,
     isAuthenticated: !!user
   };

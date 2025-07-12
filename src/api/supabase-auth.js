@@ -6,7 +6,7 @@ const env = typeof import.meta !== 'undefined' ? import.meta.env : process.env;
 // Get Supabase configuration
 const supabaseUrl = env.VITE_SUPABASE_URL || 'https://bxgdijqjdtbgzycvngug.supabase.co';
 // Make sure the anon key doesn't have any line breaks or extra whitespace
-let supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.T_KZxQHOxYvgIYLGpDXVqCj9Vgdp8YFvgSt0JHsLvAc';
+let supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.axSb9Ew1TelVzo-4EsbWO8vxYjuU_0FAxWMpbWrgfIw';
 
 // Remove any newlines or extra whitespace
 supabaseAnonKey = supabaseAnonKey.replace(/[\r\n\s]+/g, '').trim();

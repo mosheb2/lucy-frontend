@@ -11,7 +11,7 @@ console.log('Supabase configuration:', {
   keyFirstChars: supabaseAnonKey ? supabaseAnonKey.substring(0, 10) + '...' : 'none'
 });
 
-// Export the Supabase client
+// Export the Supabase client with enhanced configuration
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
@@ -34,6 +34,19 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         console.log(`Removing item from storage: ${key}`);
         localStorage.removeItem(key);
       }
+    },
+    // Add explicit cookie options to ensure cookies are properly set
+    cookieOptions: {
+      name: 'sb-auth',
+      lifetime: 60 * 60 * 24 * 365, // 1 year
+      domain: window.location.hostname,
+      path: '/',
+      sameSite: 'lax'
+    }
+  },
+  global: {
+    headers: {
+      'X-Client-Info': 'lucy-frontend'
     }
   }
 });

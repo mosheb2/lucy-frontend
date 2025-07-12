@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '@/api/supabase-auth';
+// Import the fixed Supabase client
+import { supabase } from '@/api/supabase-auth-fixed';
 import { useAuth } from '@/contexts/AuthContext';
 import apiClient from '@/api/client';
 
@@ -82,8 +83,8 @@ const AuthCallback = () => {
         console.log('Auth callback debug info:', debug);
         
         // Log Supabase configuration
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://bxgdijqjdtbgzycvngug.supabase.co';
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const supabaseUrl = 'https://bxgdijqjdtbgzycvngug.supabase.co';
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.T_KZxQHOxYvgIYLGpDXVqCj9Vgdp8YFvgSt0JHsLvAc';
         
         console.log('Auth callback URL:', window.location.href);
         console.log('Auth callback parameters:', {

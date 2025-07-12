@@ -3,6 +3,9 @@ const BACKEND_URL = 'https://api.lucysounds.com/api';
 
 console.log('API client initialized with base URL:', API_BASE_URL);
 
+// Import supabase at the top level to avoid dynamic import issues
+import { supabase } from './supabase-auth';
+
 class ApiClient {
   constructor() {
     this.baseURL = API_BASE_URL;
@@ -106,8 +109,7 @@ class ApiClient {
     console.log('Attempting signin with credentials:', { email: credentials.email });
     
     try {
-      // First try with Supabase directly
-      const { supabase } = await import('@/api/supabase-auth');
+      // Use the imported supabase instance directly
       const { data, error } = await supabase.auth.signInWithPassword({
         email: credentials.email,
         password: credentials.password
@@ -166,8 +168,7 @@ class ApiClient {
 
   async signOut() {
     try {
-      // First try with Supabase directly
-      const { supabase } = await import('@/api/supabase-auth');
+      // Use the imported supabase instance directly
       await supabase.auth.signOut();
       
       // Also try with backend API
@@ -193,30 +194,19 @@ class ApiClient {
     console.log('Getting current user, token available:', !!this.token);
     
     try {
-      // First try with Supabase directly
-      const { supabase } = await import('@/api/supabase-auth');
+      // Use the imported supabase instance directly
       const { data: userData, error: userError } = await supabase.auth.getUser();
       
       if (userError) {
-        console.error('Supabase getUser error:', userError);
+        console.error('Supabase get user error:', userError);
         // Fall back to backend API
-        return await this.request('/auth/me');
+        return this.request('/users/me');
       }
       
-      if (userData && userData.user) {
-        console.log('User data obtained from Supabase:', userData.user);
-        return { user: userData.user };
-      } else {
-        throw new Error('No user data found in Supabase response');
-      }
+      console.log('Supabase get user successful:', userData);
+      return { user: userData.user };
     } catch (error) {
-      // If it's a 401 error, the user is not authenticated
-      if (error.message.includes('401') || error.message.includes('No token provided')) {
-        console.log('Authentication failed:', error.message);
-        throw new Error('Not authenticated');
-      }
-      // Only log unexpected errors
-      console.error('API request failed:', error);
+      console.error('Get current user error:', error);
       throw error;
     }
   }

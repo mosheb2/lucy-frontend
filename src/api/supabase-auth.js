@@ -1,13 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Get environment variables from either import.meta.env (Vite dev) or process.env (Node.js production)
+const env = typeof import.meta !== 'undefined' ? import.meta.env : process.env;
+
+// Get Supabase configuration
+const supabaseUrl = env.VITE_SUPABASE_URL || 'https://bxgdijqjdtbgzycvngug.supabase.co';
+const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4Z2RpanFqZHRiZ3p5Y3ZuZ3VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5OTI0NTMsImV4cCI6MjA2NzU2ODQ1M30.T_KZxQHOxYvgIYLGpDXVqCj9Vgdp8YFvgSt0JHsLvAc';
 
 console.log('Supabase configuration:', {
   url: supabaseUrl,
   hasAnonKey: !!supabaseAnonKey,
   keyLength: supabaseAnonKey ? supabaseAnonKey.length : 0,
-  envVars: Object.keys(import.meta.env).filter(key => key.includes('SUPABASE'))
+  envVars: typeof import.meta !== 'undefined' ? Object.keys(import.meta.env).filter(key => key.includes('SUPABASE')) : Object.keys(process.env).filter(key => key.includes('SUPABASE'))
 });
 
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -252,42 +256,40 @@ export const auth = {
         return null;
       }
       
-      const sessionData = JSON.parse(storedSession);
-      console.log('Found stored session, checking if valid');
+      const parsedSession = JSON.parse(storedSession);
+      console.log('Found stored session, attempting to restore');
       
-      // Check if expired
-      const expiresAt = sessionData.expires_at * 1000; // Convert to milliseconds
+      // Check if session is expired
+      const expiresAt = parsedSession.expires_at * 1000; // Convert to milliseconds
       const now = Date.now();
       
       if (expiresAt <= now) {
-        console.log('Stored session is expired, removing');
+        console.log('Stored session is expired');
         localStorage.removeItem('supabase_session');
         return null;
       }
       
-      // Try to set the session
+      // Try to set the session in Supabase
       const { data, error } = await supabase.auth.setSession({
-        access_token: sessionData.access_token,
-        refresh_token: sessionData.refresh_token
+        access_token: parsedSession.access_token,
+        refresh_token: parsedSession.refresh_token
       });
       
       if (error) {
         console.error('Error setting session:', error);
-        localStorage.removeItem('supabase_session');
         return null;
       }
       
-      console.log('Successfully restored session');
+      console.log('Session restored successfully');
       return data.session;
     } catch (error) {
       console.error('Error restoring session:', error);
-      localStorage.removeItem('supabase_session');
       return null;
     }
   }
 };
 
-// Helper function to get user profile from Supabase
+// Helper functions for user profiles
 export const getUserProfile = async (userId) => {
   console.log('Getting user profile for ID:', userId);
   const { data, error } = await supabase
@@ -296,24 +298,26 @@ export const getUserProfile = async (userId) => {
     .eq('id', userId)
     .single();
   
-  console.log('Get user profile result:', { success: !!data, error: error?.message });
-  if (error) throw error;
+  if (error) {
+    console.error('Error getting user profile:', error);
+    throw error;
+  }
+  
   return data;
 };
 
-// Helper function to update user profile in Supabase
 export const updateUserProfile = async (userId, updates) => {
   console.log('Updating user profile for ID:', userId);
   const { data, error } = await supabase
     .from('profiles')
     .update(updates)
     .eq('id', userId)
-    .select()
-    .single();
+    .select();
   
-  console.log('Update user profile result:', { success: !!data, error: error?.message });
-  if (error) throw error;
+  if (error) {
+    console.error('Error updating user profile:', error);
+    throw error;
+  }
+  
   return data;
-};
-
-export default auth; 
+}; 

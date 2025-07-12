@@ -40,8 +40,7 @@ const AuthCallback = () => {
           console.log('Found code in URL, exchanging for session...');
           
           try {
-            // Let Supabase handle the code exchange
-            // The onAuthStateChange listener in AuthContext will handle the session
+            // Exchange the code for a session directly
             const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
             
             if (exchangeError) {
@@ -57,10 +56,21 @@ const AuthCallback = () => {
               return;
             }
             
-            console.log('Successfully exchanged code for session, redirecting...');
+            console.log('Successfully exchanged code for session, storing and redirecting...');
             
-            // Navigate to dashboard after successful authentication
-            navigate('/Dashboard', { replace: true });
+            // Store the session manually to ensure it's available
+            localStorage.setItem('supabase.auth.token', JSON.stringify({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+              expires_at: Math.floor(Date.now() / 1000) + data.session.expires_in
+            }));
+            
+            // Also set the user_authenticated flag for the RequireAuth component
+            localStorage.setItem('user_authenticated', 'true');
+            
+            // Redirect to dashboard or stored redirect location
+            const redirectTo = localStorage.getItem('auth_redirect') || '/Dashboard';
+            window.location.href = redirectTo;
           } catch (exchangeError) {
             console.error('Exception during code exchange:', exchangeError);
             setError(`Code exchange error: ${exchangeError.message}`);
@@ -94,7 +104,7 @@ const AuthCallback = () => {
   }, [navigate]);
 
   const handleReturnToLogin = () => {
-    navigate('/Login', { replace: true });
+    window.location.href = '/Login';
   };
 
   const handleClearAndRetry = () => {

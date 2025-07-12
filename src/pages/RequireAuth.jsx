@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/api/supabase-auth';
+import { supabase } from '@/api/supabase-auth-fixed';
 
 const RequireAuth = ({ children }) => {
   const { isAuthenticated, loading, user } = useAuth();
@@ -18,7 +18,7 @@ const RequireAuth = ({ children }) => {
   // Check localStorage directly as a backup
   const isAuthenticatedInStorage = localStorage.getItem('user_authenticated') === 'true';
   const hasAuthToken = !!localStorage.getItem('auth_token');
-  const hasSupabaseSession = !!localStorage.getItem('supabase_session');
+  const hasSupabaseSession = !!localStorage.getItem('supabase.auth.token');
   
   useEffect(() => {
     console.log('RequireAuth - Checking authentication state:', {
